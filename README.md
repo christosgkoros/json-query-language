@@ -39,6 +39,8 @@ npm install --save-dev json-query-language
 # or:  curl -O https://raw.githubusercontent.com/christosgkoros/json-query-language/main/query-language-schema.json
 ```
 
+The same artifact is also published to GitHub Packages as `@christosgkoros/json-query-language` — GitHub Packages accepts only scoped names. It needs a token even for public packages, so npmjs is the easier path unless you are already authenticated there; see [RELEASING.md](./RELEASING.md#installing-from-github-packages).
+
 Validate a filter with any draft 2020-12 validator:
 
 ```js
@@ -330,10 +332,13 @@ Filters themselves are unaffected apart from `$isnull` → `$isNull`; the v0.1.0
 ```
 query-language-schema.json     the schema — the only file you need to consume
 SPEC.md                        normative semantics
+RELEASING.md                   how a release reaches both registries
 examples/                      working OpenAPI 3.1 and 3.2 documents
 tests/validate.test.mjs        meta-validation + fixture runner
 tests/fixtures/valid/          one per operator; also the docs' example set
 tests/fixtures/invalid/        every defect this version fixes, pinned
+.github/workflows/ci.yml       tests on Node 20/22/24 + OpenAPI lint
+.github/workflows/release.yml  publishes on GitHub Release
 ```
 
 `npm test` meta-validates the schema under ajv's strict mode, checks that `x-profiles` covers exactly the operators the grammar defines, validates every inline example against its own subschema, and runs all fixtures — invalid ones asserting *which* keyword rejected them, so a fixture cannot pass for the wrong reason.
