@@ -9,6 +9,10 @@
     "type": "git",
     "url": "git+https://github.com/christosgkoros/json-query-language.git"
   },
+  "homepage": "https://github.com/christosgkoros/json-query-language#readme",
+  "bugs": {
+    "url": "https://github.com/christosgkoros/json-query-language/issues"
+  },
   "keywords": [
     "json-schema",
     "openapi",
@@ -28,9 +32,6 @@
     "README.md",
     "CHANGELOG.md"
   ],
-  "engines": {
-    "node": ">=20"
-  },
   "scripts": {
     "test": "node --test tests/*.test.mjs"
   },

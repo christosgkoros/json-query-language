@@ -32,20 +32,19 @@ Confining the schema to the *predicate* — no projection, ordering or paginatio
 
 ## Quickstart
 
-The schema is a single self-contained file. Vendor it, or `$ref` it by URL — it is not published to a package registry.
+The schema is a single self-contained file. Install it, vendor it, or `$ref` it by URL.
 
 ```bash
-curl -O https://raw.githubusercontent.com/christosgkoros/json-query-language/main/query-language-schema.json
+npm install --save-dev json-query-language
+# or:  curl -O https://raw.githubusercontent.com/christosgkoros/json-query-language/main/query-language-schema.json
 ```
 
 Validate a filter with any draft 2020-12 validator:
 
 ```js
-import { readFileSync } from 'node:fs'
 import Ajv2020 from 'ajv/dist/2020.js'
 import addFormats from 'ajv-formats'
-
-const schema = JSON.parse(readFileSync('query-language-schema.json', 'utf8'))
+import schema from 'json-query-language/query-language-schema.json' with { type: 'json' }
 
 const ajv = new Ajv2020({ allowUnionTypes: true })
 addFormats(ajv)
