@@ -100,9 +100,19 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      # One registry can succeed while the other fails, so a re-run must not
+      # trip over its own earlier success.
+      - name: Skip if this version is already published
+        id: exists
+        run: .github/scripts/version-published.sh
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       # --provenance links the tarball to this workflow run and this commit,
       # so consumers can verify where it was built. Requires id-token: write.
       - name: Publish
+        if: steps.exists.outputs.published != 'true'
         run: |
           npm publish \
             --provenance \
@@ -138,7 +148,16 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Skip if this version is already published
+        id: exists
+        run: .github/scripts/version-published.sh
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          REGISTRY: https://npm.pkg.github.com
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Publish
+        if: steps.exists.outputs.published != 'true'
         run: |
           npm publish \
             --tag '${{ needs.verify.outputs.npm-tag }}' \

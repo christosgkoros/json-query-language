@@ -63,6 +63,10 @@ Note that `npm publish --dry-run` does **not** contact the registry to authentic
 
 Worth doing before the first real release, since publishing cannot be undone cleanly: npm allows unpublish within 72 hours, and the name is then blocked from reuse permanently.
 
+## Re-running after a partial failure
+
+The two registries publish independently, so one can succeed while the other fails. Before publishing, each job asks its registry whether the version already exists and skips if it does — so re-running a partially-failed release is safe and will only publish what is actually missing. A version conflict will not fail the run.
+
 ## Installing from GitHub Packages
 
 Consumers of the scoped copy need to point the scope at GitHub and authenticate, since GitHub Packages requires a token even for public packages:
