@@ -1,0 +1,26 @@
+{
+  "description": "$and containing a nested $or",
+  "query": {
+    "$and": [
+      {
+        "department": {
+          "$eq": "sales"
+        }
+      },
+      {
+        "$or": [
+          {
+            "role": {
+              "$eq": "admin"
+            }
+          },
+          {
+            "role": {
+              "$eq": "manager"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

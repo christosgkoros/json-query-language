@@ -1,0 +1,12 @@
+{
+  "description": "sibling fields combine with implicit AND",
+  "query": {
+    "department": {
+      "$eq": "sales"
+    },
+    "age": {
+      "$gte": 18
+    },
+    "active": true
+  }
+}

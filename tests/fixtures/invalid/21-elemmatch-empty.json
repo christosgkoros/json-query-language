@@ -1,0 +1,9 @@
+{
+  "description": "$elemMatch needs a condition",
+  "query": {
+    "items": {
+      "$elemMatch": {}
+    }
+  },
+  "expectKeyword": "minProperties"
+}

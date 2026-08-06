@@ -1,0 +1,27 @@
+{
+  "description": "$like, $nlike, $ilike, $nilike with wildcards and escapes",
+  "query": {
+    "$and": [
+      {
+        "description": {
+          "$like": "%urgent%"
+        }
+      },
+      {
+        "code": {
+          "$nlike": "TMP-%"
+        }
+      },
+      {
+        "title": {
+          "$ilike": "%kubernetes%"
+        }
+      },
+      {
+        "slug": {
+          "$nilike": "draft\\_%"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "description": "$not negates a constraint on a single field",
+  "query": {
+    "age": {
+      "$not": {
+        "$gt": 5
+      }
+    }
+  }
+}

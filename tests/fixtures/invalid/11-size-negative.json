@@ -1,0 +1,9 @@
+{
+  "description": "an array cannot have negative length",
+  "query": {
+    "tags": {
+      "$size": -1
+    }
+  },
+  "expectKeyword": "minimum"
+}

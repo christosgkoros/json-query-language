@@ -1,0 +1,10 @@
+{
+  "description": "$flags accepts only i, m and s",
+  "query": {
+    "reference": {
+      "$regex": "^a",
+      "$flags": "gx"
+    }
+  },
+  "expectKeyword": "pattern"
+}

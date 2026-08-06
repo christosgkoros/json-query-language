@@ -1,0 +1,22 @@
+{
+  "description": "presence and nullness are distinct predicates",
+  "query": {
+    "$and": [
+      {
+        "archivedAt": {
+          "$exists": false
+        }
+      },
+      {
+        "middleName": {
+          "$isNull": true
+        }
+      },
+      {
+        "lastName": {
+          "$isNull": false
+        }
+      }
+    ]
+  }
+}

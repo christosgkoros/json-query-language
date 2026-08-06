@@ -1,0 +1,133 @@
+# OpenAPI 3.1 — the interoperable option.
+#
+# The 3.1 Path Item Object has a fixed set of method fields (get, put, post,
+# delete, options, head, patch, trace). QUERY is not among them, so a search
+# with a body is modelled as POST to a /search sub-resource. See the 3.2
+# example in this directory for the QUERY spelling.
+openapi: 3.1.0
+
+info:
+  title: Pet Store Search
+  version: 1.0.0
+  license:
+    name: MIT
+    identifier: MIT
+  description: |
+    Demonstrates referencing the JSON Query Language filter schema from an
+    OpenAPI 3.1 document so that every search endpoint shares one grammar.
+
+servers:
+  - url: https://api.example.com/v1
+
+security:
+  - bearerAuth: []
+
+paths:
+  /pets/search:
+    post:
+      operationId: searchPets
+      summary: Search pets
+      description: |
+        POST is used only because the query does not fit in a URL. The operation
+        has no side effects; responses are cacheable per `Cache-Control`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PetSearchRequest'
+            examples:
+              simple:
+                summary: One field, shorthand equality
+                value:
+                  filter:
+                    status: available
+              compound:
+                summary: Nested logic with a range and a set
+                value:
+                  filter:
+                    $and:
+                      - status: available
+                      - $or:
+                          - species: { $in: [cat, dog] }
+                          - tags: { $hasAny: [rescue, senior] }
+                      - born: { $gte: '2020-01-01' }
+      responses:
+        '200':
+          description: Matching pets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PetPage'
+        '400':
+          $ref: '#/components/responses/InvalidQuery'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  schemas:
+    # A relative $ref keeps this example self-contained and lets CI verify that
+    # the document resolves. In a published API you would instead point at the
+    # absolute, versioned $id:
+    #   $ref: 'https://christosgkoros.com/json/query-language/v0.2.0/query-language-schema.json'
+    Filter:
+      $ref: '../query-language-schema.json'
+
+    PetSearchRequest:
+      type: object
+      required: [filter]
+      properties:
+        filter:
+          $ref: '#/components/schemas/Filter'
+
+    Pet:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        species: { type: string }
+        status: { type: string, enum: [available, pending, sold] }
+        tags: { type: array, items: { type: string } }
+        born: { type: string, format: date }
+
+    PetPage:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Pet'
+
+    # RFC 9457 Problem Details. See SPEC.md §8 for the registered type URIs.
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        pointer:
+          type: string
+          description: RFC 6901 JSON Pointer to the offending clause in the request body.
+
+  responses:
+    InvalidQuery:
+      description: The filter is malformed, references an unknown field, or uses an unsupported operator.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            unsupportedOperator:
+              value:
+                type: https://christosgkoros.com/json/query-language/problems/unsupported-operator
+                title: Unsupported operator
+                status: 400
+                detail: "$regex is not supported by this endpoint."
+                pointer: /filter/name/$regex

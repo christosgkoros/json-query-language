@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: schema tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  openapi:
+    name: OpenAPI examples resolve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # Keeps the README's integration snippets honest: they are extracted from
+      # these files, so if the specs stop resolving the docs are already wrong.
+      - run: npx --yes @redocly/cli@latest lint examples/openapi-3.1-post-search.yaml
+      - run: npx --yes @redocly/cli@latest lint examples/openapi-3.2-query-method.yaml

@@ -1,0 +1,13 @@
+{
+  "description": "$between takes no more than two bounds",
+  "query": {
+    "score": {
+      "$between": [
+        10,
+        20,
+        30
+      ]
+    }
+  },
+  "expectKeyword": "maxItems"
+}

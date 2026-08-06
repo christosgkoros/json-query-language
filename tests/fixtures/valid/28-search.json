@@ -1,0 +1,8 @@
+{
+  "description": "free-text match on a field",
+  "query": {
+    "title": {
+      "$search": "kubernetes ingress"
+    }
+  }
+}

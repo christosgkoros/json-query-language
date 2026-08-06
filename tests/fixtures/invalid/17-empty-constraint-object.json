@@ -1,0 +1,7 @@
+{
+  "description": "a field needs at least one operator",
+  "query": {
+    "age": {}
+  },
+  "expectKeyword": "minProperties"
+}

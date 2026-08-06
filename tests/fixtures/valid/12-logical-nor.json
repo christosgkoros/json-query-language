@@ -1,0 +1,15 @@
+{
+  "description": "$nor rejects every listed filter",
+  "query": {
+    "$nor": [
+      {
+        "status": "archived"
+      },
+      {
+        "deletedAt": {
+          "$ne": null
+        }
+      }
+    ]
+  }
+}

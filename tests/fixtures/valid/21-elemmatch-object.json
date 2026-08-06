@@ -1,0 +1,15 @@
+{
+  "description": "$elemMatch over an array of objects takes a Filter",
+  "query": {
+    "items": {
+      "$elemMatch": {
+        "qty": {
+          "$gt": 2
+        },
+        "sku": {
+          "$startsWith": "A"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "description": "$startsWith, $endsWith, $contains treat their operand literally",
+  "query": {
+    "$and": [
+      {
+        "sku": {
+          "$startsWith": "INV-"
+        }
+      },
+      {
+        "file": {
+          "$endsWith": ".pdf"
+        }
+      },
+      {
+        "body": {
+          "$contains": "100%"
+        }
+      }
+    ]
+  }
+}

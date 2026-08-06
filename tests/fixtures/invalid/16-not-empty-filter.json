@@ -1,0 +1,7 @@
+{
+  "description": "$not needs a filter to negate",
+  "query": {
+    "$not": {}
+  },
+  "expectKeyword": "minProperties"
+}

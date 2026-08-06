@@ -1,0 +1,8 @@
+{
+  "description": "a field whose real name starts with $ is escaped by doubling",
+  "query": {
+    "$$price": {
+      "$gt": 10
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "description": "$in candidates must be distinct",
+  "query": {
+    "color": {
+      "$in": [
+        "red",
+        "red"
+      ]
+    }
+  },
+  "expectKeyword": "uniqueItems"
+}

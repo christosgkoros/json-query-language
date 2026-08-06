@@ -1,0 +1,22 @@
+{
+  "description": "$type narrows by JSON type",
+  "query": {
+    "$and": [
+      {
+        "payload": {
+          "$type": "object"
+        }
+      },
+      {
+        "quantity": {
+          "$type": "integer"
+        }
+      },
+      {
+        "deletedAt": {
+          "$type": "null"
+        }
+      }
+    ]
+  }
+}

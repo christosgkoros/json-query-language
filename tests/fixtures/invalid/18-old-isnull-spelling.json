@@ -1,0 +1,9 @@
+{
+  "description": "v0.1.0's $isnull was renamed to $isNull",
+  "query": {
+    "middleName": {
+      "$isnull": true
+    }
+  },
+  "expectKeyword": "additionalProperties"
+}

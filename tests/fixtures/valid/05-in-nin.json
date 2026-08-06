@@ -1,0 +1,41 @@
+{
+  "description": "$in and $nin over strings, numbers, booleans and null",
+  "query": {
+    "$and": [
+      {
+        "color": {
+          "$in": [
+            "red",
+            "green",
+            "blue"
+          ]
+        }
+      },
+      {
+        "rating": {
+          "$nin": [
+            1,
+            2,
+            3
+          ]
+        }
+      },
+      {
+        "flag": {
+          "$in": [
+            true,
+            false
+          ]
+        }
+      },
+      {
+        "note": {
+          "$in": [
+            "x",
+            null
+          ]
+        }
+      }
+    ]
+  }
+}

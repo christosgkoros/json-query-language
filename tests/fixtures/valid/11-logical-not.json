@@ -1,0 +1,10 @@
+{
+  "description": "$not wrapping a filter",
+  "query": {
+    "$not": {
+      "status": {
+        "$eq": "inactive"
+      }
+    }
+  }
+}

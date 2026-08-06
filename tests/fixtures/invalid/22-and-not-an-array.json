@@ -1,0 +1,9 @@
+{
+  "description": "$and takes a list of filters",
+  "query": {
+    "$and": {
+      "a": 1
+    }
+  },
+  "expectKeyword": "type"
+}

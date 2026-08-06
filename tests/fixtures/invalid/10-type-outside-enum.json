@@ -1,0 +1,9 @@
+{
+  "description": "$type only accepts JSON type names",
+  "query": {
+    "payload": {
+      "$type": "date"
+    }
+  },
+  "expectKeyword": "enum"
+}

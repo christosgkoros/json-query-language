@@ -1,0 +1,27 @@
+{
+  "description": "$gt/$gte/$lt/$lte over numbers and RFC 3339 strings",
+  "query": {
+    "$and": [
+      {
+        "price": {
+          "$gt": 50
+        }
+      },
+      {
+        "price": {
+          "$lt": 100
+        }
+      },
+      {
+        "createdAt": {
+          "$gte": "2023-01-01"
+        }
+      },
+      {
+        "updatedAt": {
+          "$lte": "2023-12-31T23:59:59Z"
+        }
+      }
+    ]
+  }
+}

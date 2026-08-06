@@ -1,0 +1,144 @@
+# OpenAPI 3.2 — the QUERY HTTP method.
+#
+# 3.2 added `additionalOperations` to the Path Item Object, which is how methods
+# outside the fixed set are described. QUERY (draft-ietf-httpbis-safe-method-w-body)
+# is safe and idempotent and carries a request body, which is exactly what a
+# search needs: it says "this is a read" in a way POST cannot.
+#
+# QUERY is still an IETF draft, so ship POST /search alongside it — see
+# openapi-3.1-post-search.yaml — and let clients negotiate.
+openapi: 3.2.0
+
+info:
+  title: Pet Store Search
+  version: 1.0.0
+  license:
+    name: MIT
+    identifier: MIT
+  description: |
+    Demonstrates referencing the JSON Query Language filter schema from the
+    request body of a QUERY operation.
+
+servers:
+  - url: https://api.example.com/v1
+
+security:
+  - bearerAuth: []
+
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      summary: List pets
+      responses:
+        '200':
+          description: All pets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PetPage'
+        '400':
+          $ref: '#/components/responses/InvalidQuery'
+
+    additionalOperations:
+      QUERY:
+        operationId: queryPets
+        summary: Search pets
+        description: |
+          A safe, idempotent read whose parameters travel in the request body.
+
+          Because QUERY is safe, the response is cacheable. A server that wants
+          the result to be addressable SHOULD return `Content-Location` pointing
+          at a URL that yields the same representation via GET.
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PetSearchRequest'
+              examples:
+                compound:
+                  summary: Nested logic with a range and a set
+                  value:
+                    filter:
+                      $and:
+                        - status: available
+                        - $or:
+                            - species: { $in: [cat, dog] }
+                            - tags: { $hasAny: [rescue, senior] }
+                        - born: { $gte: '2020-01-01' }
+        responses:
+          '200':
+            description: Matching pets
+            headers:
+              Content-Location:
+                description: A GET-addressable URL yielding this same representation, when one exists.
+                schema: { type: string, format: uri-reference }
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/PetPage'
+          '400':
+            $ref: '#/components/responses/InvalidQuery'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  schemas:
+    # Any field name is accepted here; this endpoint rejects unknown fields at
+    # runtime with an `unknown-field` problem. To have the field set enforced by
+    # schema validation instead, bundle the grammar and replace one definition,
+    # $defs/FieldPath, with an enum — the narrowing then applies at every
+    # nesting level. See README §Restricting the queryable field set.
+    Filter:
+      $ref: '../query-language-schema.json'
+
+    PetSearchRequest:
+      type: object
+      required: [filter]
+      properties:
+        filter:
+          $ref: '#/components/schemas/Filter'
+
+    Pet:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        species: { type: string }
+        status: { type: string, enum: [available, pending, sold] }
+        tags: { type: array, items: { type: string } }
+        born: { type: string, format: date }
+
+    PetPage:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Pet'
+
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        pointer:
+          type: string
+          description: RFC 6901 JSON Pointer to the offending clause in the request body.
+
+  responses:
+    InvalidQuery:
+      description: The filter is malformed, references an unknown field, or uses an unsupported operator.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

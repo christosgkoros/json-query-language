@@ -1,0 +1,5 @@
+{
+  "description": "a filter is always an object",
+  "query": "status = open",
+  "expectKeyword": "type"
+}

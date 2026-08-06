@@ -1,0 +1,12 @@
+{
+  "description": "$literal forces an object operand to be read as data",
+  "query": {
+    "payload": {
+      "$eq": {
+        "$literal": {
+          "$field": "this is data, not a reference"
+        }
+      }
+    }
+  }
+}

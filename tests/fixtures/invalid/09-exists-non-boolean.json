@@ -1,0 +1,9 @@
+{
+  "description": "$exists is a boolean, not a string",
+  "query": {
+    "archivedAt": {
+      "$exists": "yes"
+    }
+  },
+  "expectKeyword": "type"
+}

@@ -1,0 +1,8 @@
+{
+  "description": "scalar shorthand is equality",
+  "query": {
+    "status": "open",
+    "active": true,
+    "rank": 3
+  }
+}

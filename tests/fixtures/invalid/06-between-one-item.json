@@ -1,0 +1,11 @@
+{
+  "description": "$between needs exactly two bounds",
+  "query": {
+    "score": {
+      "$between": [
+        10
+      ]
+    }
+  },
+  "expectKeyword": "minItems"
+}

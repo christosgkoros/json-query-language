@@ -1,0 +1,20 @@
+{
+  "description": "dotted, indexed and wildcard field paths",
+  "query": {
+    "$and": [
+      {
+        "address.city": "Athens"
+      },
+      {
+        "items[0].sku": {
+          "$startsWith": "A"
+        }
+      },
+      {
+        "items[*].qty": {
+          "$gt": 0
+        }
+      }
+    ]
+  }
+}

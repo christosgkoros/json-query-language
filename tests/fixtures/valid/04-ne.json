@@ -1,0 +1,22 @@
+{
+  "description": "$ne mirrors $eq",
+  "query": {
+    "$and": [
+      {
+        "name": {
+          "$ne": "John Doe"
+        }
+      },
+      {
+        "active": {
+          "$ne": true
+        }
+      },
+      {
+        "deletedAt": {
+          "$ne": null
+        }
+      }
+    ]
+  }
+}

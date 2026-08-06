@@ -1,0 +1,9 @@
+{
+  "description": "$in needs at least one candidate",
+  "query": {
+    "color": {
+      "$in": []
+    }
+  },
+  "expectKeyword": "minItems"
+}

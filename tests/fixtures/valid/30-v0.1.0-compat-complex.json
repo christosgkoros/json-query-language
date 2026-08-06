@@ -1,0 +1,28 @@
+{
+  "description": "v0.1.0 example 'complexQuery' still parses",
+  "query": {
+    "$and": [
+      {
+        "name": {
+          "$eq": "Charlie"
+        }
+      },
+      {
+        "$or": [
+          {
+            "$not": {
+              "status": {
+                "$eq": "inactive"
+              }
+            }
+          },
+          {
+            "role": {
+              "$eq": "supervisor"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

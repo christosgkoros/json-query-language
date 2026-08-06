@@ -1,0 +1,23 @@
+{
+  "description": "inclusive and exclusive ranges",
+  "query": {
+    "$and": [
+      {
+        "score": {
+          "$between": [
+            10,
+            20
+          ]
+        }
+      },
+      {
+        "createdAt": {
+          "$nbetween": [
+            "2023-01-01",
+            "2023-12-31"
+          ]
+        }
+      }
+    ]
+  }
+}

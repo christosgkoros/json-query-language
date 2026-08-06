@@ -1,0 +1,9 @@
+{
+  "description": "a misspelled operator is rejected rather than read as a field name",
+  "query": {
+    "age": {
+      "$eqq": 30
+    }
+  },
+  "expectKeyword": "additionalProperties"
+}

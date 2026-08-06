@@ -1,0 +1,6 @@
+{
+  "description": "null shorthand is equality against null",
+  "query": {
+    "middleName": null
+  }
+}

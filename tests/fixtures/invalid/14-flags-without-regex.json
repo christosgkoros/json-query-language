@@ -1,0 +1,9 @@
+{
+  "description": "$flags is meaningless without $regex",
+  "query": {
+    "reference": {
+      "$flags": "i"
+    }
+  },
+  "expectKeyword": "dependentRequired"
+}

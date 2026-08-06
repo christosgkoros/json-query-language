@@ -1,0 +1,30 @@
+{
+  "description": "array membership operators",
+  "query": {
+    "$and": [
+      {
+        "tags": {
+          "$hasAny": [
+            "urgent",
+            "p1"
+          ]
+        }
+      },
+      {
+        "tags": {
+          "$hasAll": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      {
+        "labels": {
+          "$hasNone": [
+            "spam"
+          ]
+        }
+      }
+    ]
+  }
+}

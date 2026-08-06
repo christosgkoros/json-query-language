@@ -1,0 +1,41 @@
+{
+  "name": "json-query-language",
+  "version": "0.2.0",
+  "description": "A JSON-encoded, SQL-flavoured predicate language for POST /search and QUERY request bodies, described by a JSON Schema you can $ref from OpenAPI.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Christos Gkoros",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/christosgkoros/json-query-language.git"
+  },
+  "keywords": [
+    "json-schema",
+    "openapi",
+    "query-language",
+    "filter",
+    "search",
+    "http-query-method"
+  ],
+  "main": "query-language-schema.json",
+  "exports": {
+    ".": "./query-language-schema.json",
+    "./query-language-schema.json": "./query-language-schema.json"
+  },
+  "files": [
+    "query-language-schema.json",
+    "SPEC.md",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1"
+  }
+}

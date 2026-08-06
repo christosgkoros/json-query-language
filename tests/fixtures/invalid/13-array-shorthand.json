@@ -1,0 +1,10 @@
+{
+  "description": "arrays are excluded from the value shorthand — use $eq or $in",
+  "query": {
+    "tags": [
+      "a",
+      "b"
+    ]
+  },
+  "expectKeyword": "type"
+}

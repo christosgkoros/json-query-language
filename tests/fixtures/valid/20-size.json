@@ -1,0 +1,20 @@
+{
+  "description": "$size as an exact count and as a nested comparison",
+  "query": {
+    "$and": [
+      {
+        "tags": {
+          "$size": 3
+        }
+      },
+      {
+        "items": {
+          "$size": {
+            "$gte": 1,
+            "$lte": 10
+          }
+        }
+      }
+    ]
+  }
+}

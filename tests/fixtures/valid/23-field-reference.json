@@ -1,0 +1,21 @@
+{
+  "description": "comparing two fields of the same record",
+  "query": {
+    "$and": [
+      {
+        "price": {
+          "$gt": {
+            "$field": "cost"
+          }
+        }
+      },
+      {
+        "shippedAt": {
+          "$gte": {
+            "$field": "orderedAt"
+          }
+        }
+      }
+    ]
+  }
+}

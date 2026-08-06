@@ -1,0 +1,10 @@
+{
+  "description": "operators from different families combine on one field (rejected by v0.1.0)",
+  "query": {
+    "age": {
+      "$gt": 18,
+      "$ne": 30,
+      "$lte": 65
+    }
+  }
+}

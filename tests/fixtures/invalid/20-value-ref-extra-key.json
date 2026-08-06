@@ -1,0 +1,12 @@
+{
+  "description": "a field reference carries nothing but $field",
+  "query": {
+    "price": {
+      "$gt": {
+        "$field": "cost",
+        "$offset": 1
+      }
+    }
+  },
+  "expectKeyword": "additionalProperties"
+}

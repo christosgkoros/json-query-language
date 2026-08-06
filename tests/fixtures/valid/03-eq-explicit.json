@@ -1,0 +1,42 @@
+{
+  "description": "$eq accepts every JSON type, including null, arrays and objects",
+  "query": {
+    "$and": [
+      {
+        "name": {
+          "$eq": "John Doe"
+        }
+      },
+      {
+        "active": {
+          "$eq": true
+        }
+      },
+      {
+        "age": {
+          "$eq": 30
+        }
+      },
+      {
+        "middleName": {
+          "$eq": null
+        }
+      },
+      {
+        "tags": {
+          "$eq": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      {
+        "address": {
+          "$eq": {
+            "city": "Athens"
+          }
+        }
+      }
+    ]
+  }
+}

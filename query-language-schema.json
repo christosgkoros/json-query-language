@@ -1,359 +1,387 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "id": "https://christosgkoros.com/json/query-language/v0.1.0",
-  "components": {
-    "schemas": {
-      "Query": {
-        "oneOf": [
-          { "$ref": "#/components/schemas/Condition" },
-          {
-            "type": "object",
-            "properties": {
-              "$and": {
-                "type": "array",
-                "description": "A list of conditions that all must be true.",
-                "items": { "$ref": "#/components/schemas/Query" }
-              },
-              "$or": {
-                "type": "array",
-                "description": "A list of conditions where at least one must be true.",
-                "items": { "$ref": "#/components/schemas/Query" }
-              },
-              "$not": {
-                "description": "Negates a condition.",
-                "$ref": "#/components/schemas/Query"
-              }
-            },
-            "additionalProperties": false
-          }
-        ],
-        "examples": {
-          "simpleAnd": {
-            "$and": [
-              { "name": { "$eq": "Alice" } },
-              { "age": { "$eq": 30 } }
-            ]
-          },
-          "andOr": {
-            "$and": [
-              { "department": { "$eq": "sales" } },
-              {
-                "$or": [
-                  { "role": { "$eq": "admin" } },
-                  { "role": { "$eq": "manager" } }
-                ]
-              }
-            ]
-          },
-          "complexQuery": {
-            "$and": [
-              { "name": { "$eq": "Charlie" } },
-              {
-                "$or": [
-                  { "$not": { "status": { "$eq": "inactive" } } },
-                  { "role": { "$eq": "supervisor" } }
-                ]
-              }
-            ]
-          }
+  "$id": "https://christosgkoros.com/json/query-language/v0.2.0/query-language-schema.json",
+  "title": "JSON Query Language — Filter",
+  "description": "A JSON-encoded, SQL-flavoured predicate language for describing the request body of search operations (POST /…/search and QUERY /…). Reference this schema from an OpenAPI document so every search endpoint in an API shares one consistent filter grammar. Normative semantics are defined in SPEC.md.",
+  "$comment": "Version 0.2.0. See https://github.com/christosgkoros/json-query-language",
+
+  "$ref": "#/$defs/Filter",
+
+  "x-profiles": {
+    "core": ["$and", "$or", "$nor", "$not", "$eq", "$ne", "$in", "$nin", "$gt", "$gte", "$lt", "$lte", "$exists", "$isNull"],
+    "strings": ["$like", "$nlike", "$ilike", "$nilike", "$startsWith", "$endsWith", "$contains"],
+    "regex": ["$regex", "$flags"],
+    "ranges": ["$between", "$nbetween"],
+    "types": ["$type"],
+    "collections": ["$hasAny", "$hasAll", "$hasNone", "$size", "$elemMatch"],
+    "refs": ["$field", "$literal"],
+    "text": ["$search"]
+  },
+
+  "$defs": {
+    "Filter": {
+      "title": "Filter",
+      "description": "A boolean expression over a record. Sibling members are combined with implicit AND: every member must evaluate TRUE for the filter to match. Keys beginning with '$' are reserved for logical operators; a field whose real name begins with '$' is escaped by doubling it ('$$price' means the field '$price').",
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "$and": {
+          "title": "$and",
+          "description": "All of the listed filters must evaluate TRUE.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/Filter" }
+        },
+        "$or": {
+          "title": "$or",
+          "description": "At least one of the listed filters must evaluate TRUE.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/Filter" }
+        },
+        "$nor": {
+          "title": "$nor",
+          "description": "None of the listed filters may evaluate TRUE.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/Filter" }
+        },
+        "$not": {
+          "title": "$not",
+          "description": "Negates a filter. Under three-valued logic NOT UNKNOWN is UNKNOWN, not TRUE — see SPEC.md §4.",
+          "$ref": "#/$defs/Filter"
         }
       },
-      "Condition": {
-        "oneOf": [
-          { "$ref": "#/components/schemas/equalCondition" },
-          { "$ref": "#/components/schemas/notEqualCondition" },
-          { "$ref": "#/components/schemas/inArrayCondition" },
-          { "$ref": "#/components/schemas/notInArrayCondition" },
-          { "$ref": "#/components/schemas/likeCondition" },
-          { "$ref": "#/components/schemas/notLikeCondition" },
-          { "$ref": "#/components/schemas/rangeCondition" },
-          { "$ref": "#/components/schemas/isNullCondition" }
+      "patternProperties": {
+        "^(?:[^$]|\\$\\$)": { "$ref": "#/$defs/Constraint" }
+      },
+      "propertyNames": {
+        "$comment": "Deliberately overlaps with patternProperties/additionalProperties above: those two enforce the default grammar, while this is the single named override point. Narrow #/$defs/FieldPath in a bundled copy of this schema to restrict an endpoint to a fixed field set — the narrowing then applies at every nesting level, because Filter recurses through this same $ref. See README §Restricting the queryable field set.",
+        "anyOf": [
+          { "enum": ["$and", "$or", "$nor", "$not"] },
+          { "$ref": "#/$defs/FieldPath" }
         ]
       },
-      "equalCondition": {
-        "type": "object",
-        "description": "Matches when a field equals a value.",
-        "patternProperties": {
-          "^.*$": {
-            "type": "object",
-            "properties": {
-              "$eq": {
-                "oneOf": [
-                  { "type": "string" },
-                  { "type": "boolean" },
-                  { "type": "number" }
-                ],
-                "description": "The value to match."
-              }
-            },
-            "additionalProperties": false
-          }
+      "additionalProperties": false,
+      "examples": [
+        { "status": "open" },
+        { "department": { "$eq": "sales" }, "age": { "$gte": 18 } },
+        {
+          "$and": [
+            { "department": { "$eq": "sales" } },
+            { "$or": [{ "role": "admin" }, { "role": "manager" }] }
+          ]
+        }
+      ]
+    },
+
+    "FieldPath": {
+      "title": "Field path",
+      "description": "A dotted path to a member of the record: 'a.b.c'. Array elements are addressed by index ('items[0]') or wildcard ('items[*].sku'). A literal '.' inside a key is escaped as '\\.'. The default rule is permissive — any non-empty string not beginning with a single '$' — because the set of queryable paths is a property of the resource, not of the language. Full grammar in SPEC.md §3.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?:[^$]|\\$\\$)",
+      "examples": ["name", "address.city", "items[*].sku", "$$internal"]
+    },
+
+    "Constraint": {
+      "title": "Constraint",
+      "description": "The condition applied to one field. Either a scalar shorthand — {\"status\": \"open\"} is exactly {\"status\": {\"$eq\": \"open\"}} — or an object of operators. Arrays and objects are deliberately excluded from the shorthand so that {\"tags\": [\"a\"]} can never be read ambiguously as either $eq or $in.",
+      "anyOf": [
+        { "$ref": "#/$defs/ScalarOrNull" },
+        { "$ref": "#/$defs/ConstraintObject" }
+      ]
+    },
+
+    "ConstraintObject": {
+      "title": "Constraint object",
+      "description": "One or more operators applied to the same field. Sibling operators are combined with implicit AND, so {\"age\": {\"$gt\": 18, \"$ne\": 30}} is a single well-formed constraint.",
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "$eq": {
+          "title": "$eq",
+          "description": "Field equals the operand. Any JSON value, including null, arrays and objects.",
+          "$ref": "#/$defs/Operand"
         },
-        "additionalProperties": false,
-        "examples": {
-          "eqString": {
-            "name": { "$eq": "John Doe" }
-          },
-          "eqBoolean": {
-            "active": { "$eq": true }
-          },
-          "eqNumber": {
-            "age": { "$eq": 30 }
-          }
+        "$ne": {
+          "title": "$ne",
+          "description": "Field does not equal the operand.",
+          "$ref": "#/$defs/Operand"
+        },
+
+        "$gt": {
+          "title": "$gt",
+          "description": "Field is strictly greater than the operand.",
+          "$ref": "#/$defs/OrderedOperand"
+        },
+        "$gte": {
+          "title": "$gte",
+          "description": "Field is greater than or equal to the operand.",
+          "$ref": "#/$defs/OrderedOperand"
+        },
+        "$lt": {
+          "title": "$lt",
+          "description": "Field is strictly less than the operand.",
+          "$ref": "#/$defs/OrderedOperand"
+        },
+        "$lte": {
+          "title": "$lte",
+          "description": "Field is less than or equal to the operand.",
+          "$ref": "#/$defs/OrderedOperand"
+        },
+
+        "$between": {
+          "title": "$between",
+          "description": "Field falls within [lower, upper], inclusive of both bounds.",
+          "$ref": "#/$defs/Bounds"
+        },
+        "$nbetween": {
+          "title": "$nbetween",
+          "description": "Field falls outside [lower, upper].",
+          "$ref": "#/$defs/Bounds"
+        },
+
+        "$in": {
+          "title": "$in",
+          "description": "Field equals at least one member of the list.",
+          "$ref": "#/$defs/ScalarSet"
+        },
+        "$nin": {
+          "title": "$nin",
+          "description": "Field equals no member of the list.",
+          "$ref": "#/$defs/ScalarSet"
+        },
+
+        "$like": {
+          "title": "$like",
+          "description": "SQL LIKE pattern: '%' matches any run of characters, '_' matches exactly one, and '\\' escapes either. Case-sensitive.",
+          "type": "string",
+          "examples": ["%urgent%", "INV-____", "100\\%"]
+        },
+        "$nlike": {
+          "title": "$nlike",
+          "description": "Negated $like.",
+          "type": "string"
+        },
+        "$ilike": {
+          "title": "$ilike",
+          "description": "Case-insensitive $like. Collation is server-defined; see SPEC.md §5.3.",
+          "type": "string"
+        },
+        "$nilike": {
+          "title": "$nilike",
+          "description": "Negated $ilike.",
+          "type": "string"
+        },
+        "$startsWith": {
+          "title": "$startsWith",
+          "description": "Field begins with this literal substring. Wildcards are not interpreted.",
+          "type": "string"
+        },
+        "$endsWith": {
+          "title": "$endsWith",
+          "description": "Field ends with this literal substring. Wildcards are not interpreted.",
+          "type": "string"
+        },
+        "$contains": {
+          "title": "$contains",
+          "description": "Field contains this literal substring. String-only — for array membership use $hasAny, $hasAll or $hasNone.",
+          "type": "string"
+        },
+
+        "$regex": {
+          "title": "$regex",
+          "description": "Field matches this regular expression (ECMA-262 syntax). Servers SHOULD bound execution time; see SPEC.md §7.",
+          "type": "string",
+          "format": "regex"
+        },
+        "$flags": {
+          "title": "$flags",
+          "description": "Modifiers for $regex: 'i' case-insensitive, 'm' multiline, 's' dot-matches-newline. Only valid alongside $regex.",
+          "type": "string",
+          "pattern": "^[ims]{0,3}$"
+        },
+
+        "$exists": {
+          "title": "$exists",
+          "description": "true if the field is present on the record, even when its value is null; false if absent. Distinct from $isNull — see SPEC.md §4.2.",
+          "type": "boolean"
+        },
+        "$isNull": {
+          "title": "$isNull",
+          "description": "true if the field's value is null (equivalent to {\"$eq\": null}); false if it is non-null (equivalent to {\"$ne\": null}).",
+          "type": "boolean"
+        },
+        "$type": {
+          "title": "$type",
+          "description": "Field's JSON type. 'integer' matches a number with no fractional part.",
+          "type": "string",
+          "enum": ["string", "number", "integer", "boolean", "object", "array", "null"]
+        },
+
+        "$hasAny": {
+          "title": "$hasAny",
+          "description": "The array-valued field shares at least one member with this list.",
+          "$ref": "#/$defs/OperandSet"
+        },
+        "$hasAll": {
+          "title": "$hasAll",
+          "description": "The array-valued field contains every member of this list.",
+          "$ref": "#/$defs/OperandSet"
+        },
+        "$hasNone": {
+          "title": "$hasNone",
+          "description": "The array-valued field contains no member of this list.",
+          "$ref": "#/$defs/OperandSet"
+        },
+        "$size": {
+          "title": "$size",
+          "description": "Length of the array-valued field: either an exact count or a nested numeric constraint.",
+          "$ref": "#/$defs/SizeConstraint"
+        },
+        "$elemMatch": {
+          "title": "$elemMatch",
+          "description": "At least one element of the array-valued field satisfies this condition. Supply a Filter for arrays of objects (paths are relative to the element) or a constraint object for arrays of scalars.",
+          "anyOf": [
+            { "$ref": "#/$defs/Filter" },
+            { "$ref": "#/$defs/ConstraintObject" }
+          ]
+        },
+
+        "$search": {
+          "title": "$search",
+          "description": "Free-text match against the field. Tokenisation, stemming and relevance are server-defined.",
+          "type": "string",
+          "minLength": 1
+        },
+
+        "$not": {
+          "title": "$not (field-level)",
+          "description": "Negates the constraint on this field. {\"age\": {\"$not\": {\"$gt\": 5}}} is TRUE when age is not greater than 5 and UNKNOWN when age is null or absent.",
+          "$ref": "#/$defs/ConstraintObject"
         }
       },
-      "notEqualCondition": {
-        "type": "object",
-        "description": "Matches when a field does not equal a value.",
-        "patternProperties": {
-          "^.*$": {
-            "type": "object",
-            "properties": {
-              "$ne": {
-                "oneOf": [
-                  { "type": "string" },
-                  { "type": "boolean" },
-                  { "type": "number" }
-                ],
-                "description": "The value to avoid."
-              }
-            },
-            "additionalProperties": false
-          }
-        },
-        "additionalProperties": false,
-        "examples": {
-          "neString": {
-            "name": { "$ne": "John Doe" }
-          },
-          "neBoolean": {
-            "active": { "$ne": true }
-          },
-          "neNumber": {
-            "age": { "$ne": 30 }
-          }
-        }
+      "dependentRequired": {
+        "$flags": ["$regex"]
       },
-      "inArrayCondition": {
-        "type": "object",
-        "description": "Matches when a field is found in an array.",
-        "patternProperties": {
-          "^.*$": {
-            "type": "object",
-            "properties": {
-              "$in": {
-                "type": "array",
-                "description": "List of possible values.",
-                "items": {
-                  "oneOf": [
-                    { "type": "string" },
-                    { "type": "number" }
-                  ]
-                }
-              }
-            },
-            "additionalProperties": false
-          }
-        },
-        "additionalProperties": false,
-        "examples": {
-          "inString": {
-            "color": {
-              "$in": [
-                "red",
-                "green",
-                "blue"
-              ]
-            }
-          },
-          "inNumber": {
-            "rating": {
-              "$in": [1, 2, 3, 4, 5]
-            }
-          }
-        }
+      "additionalProperties": false,
+      "examples": [
+        { "$eq": "open" },
+        { "$gt": 18, "$ne": 30 },
+        { "$in": ["red", "green"] },
+        { "$regex": "^inv-", "$flags": "i" }
+      ]
+    },
+
+    "ScalarOrNull": {
+      "title": "Scalar value",
+      "description": "A JSON scalar or null.",
+      "type": ["string", "number", "boolean", "null"]
+    },
+
+    "Operand": {
+      "title": "Operand",
+      "description": "A value to compare against: any JSON value, a reference to another field of the same record, or a $literal-wrapped value.",
+      "anyOf": [
+        { "$ref": "#/$defs/ValueRef" },
+        { "$ref": "#/$defs/LiteralWrapper" },
+        { "$ref": "#/$defs/PlainValue" }
+      ]
+    },
+
+    "OrderedOperand": {
+      "title": "Ordered operand",
+      "description": "A value on which an ordering is defined: a number, or a string compared lexicographically — which for RFC 3339 date, date-time and time strings coincides with chronological order.",
+      "anyOf": [
+        { "type": "number" },
+        { "type": "string" },
+        { "type": "string", "format": "date" },
+        { "type": "string", "format": "date-time" },
+        { "type": "string", "format": "time" },
+        { "$ref": "#/$defs/ValueRef" }
+      ],
+      "examples": [50, "2023-01-01", "2023-01-01T00:00:00Z", { "$field": "cost" }]
+    },
+
+    "ValueRef": {
+      "title": "Field reference",
+      "description": "Compares against another field of the same record rather than a constant: {\"price\": {\"$gt\": {\"$field\": \"cost\"}}} is SQL's WHERE price > cost.",
+      "type": "object",
+      "required": ["$field"],
+      "properties": {
+        "$field": { "$ref": "#/$defs/FieldPath" }
       },
-      "notInArrayCondition": {
-        "type": "object",
-        "description": "Matches when a field is not found in an array.",
-        "patternProperties": {
-          "^.*$": {
-            "type": "object",
-            "properties": {
-              "$nin": {
-                "type": "array",
-                "description": "List of values to exclude.",
-                "items": {
-                  "oneOf": [
-                    { "type": "string" },
-                    { "type": "number" }
-                  ]
-                }
-              }
-            },
-            "additionalProperties": false
-          }
-        },
-        "additionalProperties": false,
-        "examples": {
-          "notInString": {
-            "color": {
-              "$nin": [
-                "red",
-                "green",
-                "blue"
-              ]
-            }
-          },
-          "notInNumber": {
-            "rating": {
-              "$nin": [1, 2, 3, 4, 5]
-            }
-          }
-        }
+      "additionalProperties": false
+    },
+
+    "LiteralWrapper": {
+      "title": "Literal escape",
+      "description": "Forces the wrapped value to be treated as data. Required only when an object operand would otherwise look like a field reference, e.g. {\"$literal\": {\"$field\": \"not-a-reference\"}}.",
+      "type": "object",
+      "required": ["$literal"],
+      "properties": {
+        "$literal": true
       },
-      "likeCondition": {
-        "type": "object",
-        "description": "Matches when a field follows a pattern.",
-        "patternProperties": {
-          "^.*$": {
-            "type": "object",
-            "properties": {
-              "$like": {
-                "type": "string",
-                "description": "A SQL-like pattern.",
-                "regex": "['\"%?.+%?['\"]"
-              }
-            },
-            "additionalProperties": false
-          }
-        },
-        "additionalProperties": false,
-        "example": {
-          "description": {
-            "$like": "%urgent%"
-          }
+      "additionalProperties": false
+    },
+
+    "PlainValue": {
+      "title": "Plain value",
+      "description": "Any JSON value that is not an object carrying '$'-prefixed keys. The '$' prefix is reserved for $field and $literal, so plain object operands must not use it.",
+      "if": { "type": "object" },
+      "then": { "type": "object", "propertyNames": { "pattern": "^[^$]" } }
+    },
+
+    "Bounds": {
+      "title": "Bounds",
+      "description": "An inclusive [lower, upper] pair. Both bounds SHOULD be of the same type.",
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "$ref": "#/$defs/OrderedOperand" },
+      "examples": [[10, 20], ["2023-01-01", "2023-12-31"]]
+    },
+
+    "ScalarSet": {
+      "title": "Scalar set",
+      "description": "A non-empty list of distinct scalars. Servers MAY cap its length; see SPEC.md §7.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/ScalarOrNull" },
+      "examples": [["red", "green", "blue"], [1, 2, 3]]
+    },
+
+    "OperandSet": {
+      "title": "Operand set",
+      "description": "A non-empty list of distinct values to test array membership against.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/Operand" }
+    },
+
+    "SizeConstraint": {
+      "title": "Size constraint",
+      "description": "An exact array length, or a comparison on that length.",
+      "anyOf": [
+        { "type": "integer", "minimum": 0 },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "$eq": { "type": "integer", "minimum": 0 },
+            "$ne": { "type": "integer", "minimum": 0 },
+            "$gt": { "type": "integer", "minimum": 0 },
+            "$gte": { "type": "integer", "minimum": 0 },
+            "$lt": { "type": "integer", "minimum": 0 },
+            "$lte": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
         }
-      },
-      "notLikeCondition": {
-        "type": "object",
-        "description": "Matches when a field does not follow a pattern.",
-        "patternProperties": {
-          "^.*$": {
-            "type": "object",
-            "properties": {
-              "$nlike": {
-                "type": "string",
-                "regex": "['\"%?.+%?['\"]",
-                "description": "A SQL-like pattern to avoid."
-              }
-            },
-            "additionalProperties": false
-          }
-        },
-        "additionalProperties": false,
-        "example": {
-          "description": {
-            "$nlike": "%urgent%"
-          }
-        }
-      },
-      "rangeCondition": {
-        "type": "object",
-        "description": "Matches when a field meets range criteria.",
-        "patternProperties": {
-          "^.*$": {
-            "type": "object",
-            "properties": {
-              "$gt": {
-                "oneOf": [
-                  { "type": "string", "format": "date" },
-                  { "type": "number" }
-                ],
-                "description": "Greater than."
-              },
-              "$lt": {
-                "oneOf": [
-                  { "type": "string", "format": "date" },
-                  { "type": "number" }
-                ],
-                "description": "Less than."
-              },
-              "$gte": {
-                "oneOf": [
-                  { "type": "string", "format": "date" },
-                  { "type": "number" }
-                ],
-                "description": "Greater than or equal to."
-              },
-              "$lte": {
-                "oneOf": [
-                  { "type": "string", "format": "date" },
-                  { "type": "number" }
-                ],
-                "description": "Less than or equal to."
-              },
-              "$between": {
-                "type": "array",
-                "description": "Between two values (inclusive).",
-                "items": {
-                  "oneOf": [
-                    { "type": "string" },
-                    { "type": "number" }
-                  ]
-                },
-                "minItems": 2,
-                "maxItems": 2
-              }
-            },
-            "additionalProperties": false
-          }
-        },
-        "additionalProperties": false,
-        "examples": {
-          "gt": {
-            "price": { "$gt": 50 }
-          },
-          "lt": {
-            "price": { "$lt": 100 }
-          },
-          "gte": {
-            "createdAt": { "$gte": "2023-01-01" }
-          },
-          "lte": {
-            "createdAt": { "$lte": "2023-12-31" }
-          },
-          "score": {
-            "$between": [10, 20]
-          }
-        }
-      },
-      "isNullCondition": {
-        "type": "object",
-        "description": "Matches when a field is null or not null.",
-        "patternProperties": {
-          "^.*$": {
-            "type": "object",
-            "properties": {
-              "$isnull": {
-                "type": "boolean",
-                "enum": [true, false],
-                "description": "Set to true to check for null."
-              }
-            },
-            "additionalProperties": false
-          }
-        },
-        "additionalProperties": false,
-        "examples": {
-          "null": {
-            "middleName": { "$isnull": true }
-          },
-          "notNull": {
-            "lastName": { "$isnull": false }
-          }
-        }
-      }
+      ],
+      "examples": [3, { "$gte": 1 }]
     }
   }
 }

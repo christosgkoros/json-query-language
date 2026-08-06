@@ -1,0 +1,10 @@
+{
+  "description": "$elemMatch over an array of scalars takes a constraint object",
+  "query": {
+    "tags": {
+      "$elemMatch": {
+        "$like": "p%"
+      }
+    }
+  }
+}

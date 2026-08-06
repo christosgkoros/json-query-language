@@ -1,0 +1,9 @@
+{
+  "description": "a field name starting with a single $ must be escaped as $$",
+  "query": {
+    "$price": {
+      "$gt": 10
+    }
+  },
+  "expectKeyword": "additionalProperties"
+}

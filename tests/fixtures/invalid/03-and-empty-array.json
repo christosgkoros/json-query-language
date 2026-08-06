@@ -1,0 +1,7 @@
+{
+  "description": "$and needs at least one operand",
+  "query": {
+    "$and": []
+  },
+  "expectKeyword": "minItems"
+}

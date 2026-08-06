@@ -1,0 +1,9 @@
+{
+  "description": "objects are excluded from the value shorthand",
+  "query": {
+    "address": {
+      "city": "Athens"
+    }
+  },
+  "expectKeyword": "additionalProperties"
+}

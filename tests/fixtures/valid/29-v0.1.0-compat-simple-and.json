@@ -1,0 +1,17 @@
+{
+  "description": "v0.1.0 example 'simpleAnd' still parses",
+  "query": {
+    "$and": [
+      {
+        "name": {
+          "$eq": "Alice"
+        }
+      },
+      {
+        "age": {
+          "$eq": 30
+        }
+      }
+    ]
+  }
+}
