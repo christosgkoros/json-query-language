@@ -92,6 +92,14 @@ jobs:
           node-version: '22'
           registry-url: https://registry.npmjs.org
 
+      # `npm publish --dry-run` does not authenticate, so it cannot tell you the
+      # token is wrong. This does — it is the only step in a rehearsal that
+      # actually proves the credential works.
+      - name: Check authentication
+        run: npm whoami
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       # --provenance links the tarball to this workflow run and this commit,
       # so consumers can verify where it was built. Requires id-token: write.
       - name: Publish
@@ -124,6 +132,11 @@ jobs:
       # here — the tarball contents are otherwise identical.
       - name: Scope the package name
         run: npm pkg set name="@${{ github.repository_owner }}/${{ github.event.repository.name }}"
+
+      - name: Check authentication
+        run: npm whoami --registry=https://npm.pkg.github.com
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish
         run: |
