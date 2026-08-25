@@ -52,13 +52,37 @@ An implementation SHOULD publish which profiles and fields it accepts. This spec
   "queryLanguage": "https://christosgkoros.com/json/query-language/v0.2.0/query-language-schema.json",
   "profiles": ["core", "strings", "ranges"],
   "fields": {
-    "status":    { "operators": ["$eq", "$ne", "$in"] },
-    "createdAt": { "operators": ["$gt", "$gte", "$lt", "$lte", "$between"] },
-    "title":     { "operators": ["$eq", "$like", "$ilike"] }
+    "status": {
+      "operators": ["$eq", "$ne", "$in"],
+      "type": "string",
+      "values": ["available", "pending", "sold"],
+      "description": "Listing state."
+    },
+    "createdAt": {
+      "operators": ["$gt", "$gte", "$lt", "$lte", "$between"],
+      "type": "string",
+      "format": "date-time"
+    },
+    "title": {
+      "operators": ["$eq", "$like", "$ilike"],
+      "type": "string"
+    }
   },
   "limits": { "maxDepth": 10, "maxClauses": 100, "maxSetLength": 1000 }
 }
 ```
+
+Each member of `fields` describes one queryable path:
+
+| Member | Required | Meaning |
+| --- | --- | --- |
+| `operators` | yes | The operators accepted on this path. A subset of those implied by `profiles`. |
+| `type` | SHOULD | The JSON type of the field's value, drawn from the `$type` vocabulary of §5.10. |
+| `format` | — | A format name constraining a `type: "string"` value: `date`, `date-time`, `uuid`, and so on. |
+| `values` | SHOULD, where the domain is closed | The complete set of accepted values. |
+| `description` | — | Prose stating what the field holds. |
+
+`operators` tells a client what it may write; `type`, `format` and `values` tell it *what to write*. The grammar cannot carry that second half: field names are constrained through `propertyNames`, but every path shares one `Constraint` definition, so per-field operand domains are not expressible in the schema (§6). A filter naming a real field with a value outside that field's domain is therefore well-formed, and matches nothing — the failure surfaces as an empty result set rather than an error (§8). The capability document is the only place the domain can be stated, which is why `values` is RECOMMENDED wherever the domain is closed.
 
 ## 3. Data model and field paths
 
@@ -348,6 +372,25 @@ Content-Type: application/problem+json
   "status": 400,
   "detail": "$regex is not in this endpoint's advertised profiles (core, strings).",
   "pointer": "/filter/$and/1/name/$regex"
+}
+```
+
+A problem SHOULD carry whatever the client needs to build a correct filter on its next attempt, not only a statement of what was wrong:
+
+- `unknown-field` SHOULD carry a **`queryableFields`** member listing the paths this endpoint does expose. Without it, a client that guessed one field name wrong has no way to converge except by guessing again.
+- `unsupported-operator` SHOULD name the endpoint's advertised profiles, as above.
+- `invalid-operand` SHOULD carry an **`accepted`** member describing the field's domain — the `values`, `type` or `format` of §2.2 — whenever the operand was rejected for falling outside it.
+
+These members restate part of the capability document (§2.2) deliberately: a client that never fetched it can still recover in one round trip.
+
+```json
+{
+  "type": "https://christosgkoros.com/json/query-language/problems/unknown-field",
+  "title": "Unknown field",
+  "status": 400,
+  "detail": "'birthDate' is not a queryable path on this collection.",
+  "pointer": "/filter/$and/0/birthDate",
+  "queryableFields": ["id", "name", "species", "status", "born", "tags"]
 }
 ```
 

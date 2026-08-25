@@ -144,12 +144,12 @@
 
         "$in": {
           "title": "$in",
-          "description": "Field equals at least one member of the list.",
+          "description": "Field equals at least one member of the list. Compares the whole value \u2014 it does NOT test membership inside an array-valued field: {\"tags\": {\"$in\": [\"a\"]}} asks whether tags equals \"a\". For array elements use $hasAny.",
           "$ref": "#/$defs/ScalarSet"
         },
         "$nin": {
           "title": "$nin",
-          "description": "Field equals no member of the list.",
+          "description": "Field equals no member of the list. Like $in, compares the whole value rather than array elements; the array-element form is $hasNone.",
           "$ref": "#/$defs/ScalarSet"
         },
 

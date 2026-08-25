@@ -5,6 +5,40 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — with the pre-1.0 caveat that a
 minor release may break compatibility, in which case the break is spelled out below.
 
+## [0.3.0] — 2026-08-25
+
+Guidance for adopters exposing a search endpoint to an LLM agent. No grammar change: filters
+valid under v0.2.0 remain valid, and the only schema edit is to two `description` annotations.
+
+### Added
+
+- **Per-field domains in the capability document.** [SPEC.md §2.2](./SPEC.md#22-capability-discovery)'s
+  RECOMMENDED shape now carries `type`, `format`, `values` and `description` alongside
+  `operators`, with a table defining each. The grammar cannot express per-field operand
+  domains — every path shares one `Constraint` — so a filter naming a real field with an
+  out-of-domain value is well-formed and matches nothing. The capability document is the only
+  place that domain can be stated.
+- **Recovery members on problem details.** [SPEC.md §8](./SPEC.md#8-errors) now RECOMMENDS that
+  `unknown-field` carry `queryableFields` and that `invalid-operand` carry `accepted`, so a
+  client that never fetched the capability document can still converge in one round trip
+  instead of guessing field names one at a time.
+- **README §*Exposing search to an agent*** — what reaches a tool definition, the three
+  valid-but-wrong filters that fail as an empty result set, and the five steps that prevent
+  them (bundle rather than remote-`$ref`, narrow `FieldPath`, publish value domains, trim to
+  advertised profiles, state the null and `$in` semantics in the tool description).
+
+### Changed
+
+- **README framing.** The schema is presented as feeding two integration paths rather than
+  one: `$ref`'d from an OpenAPI document, or bundled into an MCP tool's `inputSchema`. The
+  *Referencing by URL or by copy* table gains an `MCP inputSchema` row recording that the
+  absolute-URL form does not work there at all, since nothing on that path resolves remote
+  refs.
+- `$in` and `$nin` descriptions now state that they compare the whole value and do not test
+  array membership, naming `$hasAny`/`$hasNone` as the element operators. `$contains` already
+  warned about the same crossover; these two did not, and they are the operators a client
+  carrying MongoDB habits reaches for first.
+
 ## [0.2.0] — 2026-08-06
 
 A structural rewrite. The v0.1.0 file described a grammar but did not enforce one; this
@@ -88,5 +122,6 @@ Initial research draft: `$and`, `$or`, `$not` over eight leaf condition types
 (`$eq`, `$ne`, `$in`, `$nin`, `$like`, `$nlike`, `$gt`/`$gte`/`$lt`/`$lte`/`$between`, `$isnull`),
 laid out as an OpenAPI `components.schemas` fragment.
 
+[0.3.0]: https://github.com/christosgkoros/json-query-language/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/christosgkoros/json-query-language/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/christosgkoros/json-query-language/releases/tag/v0.1.0

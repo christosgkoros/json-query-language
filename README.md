@@ -1,8 +1,8 @@
 # JSON Query Language
 
-A JSON-encoded, SQL-flavoured **predicate language**, described by a single JSON Schema you can `$ref` from an OpenAPI document.
+A JSON-encoded, SQL-flavoured **predicate language**, described by a single JSON Schema — `$ref` it from an OpenAPI document, or drop it into an MCP tool's `inputSchema`.
 
-Write the filter grammar once. Reference it from every `POST /…/search` and `QUERY /…` operation in your API. Clients learn one language instead of one ad-hoc query syntax per endpoint.
+Write the filter grammar once. Use it for every `POST /…/search` and `QUERY /…` operation in your API, and for every search tool you expose to an agent. Clients learn one language instead of one ad-hoc query syntax per endpoint — and so do models.
 
 ```json
 {
@@ -26,7 +26,7 @@ Write the filter grammar once. Reference it from every `POST /…/search` and `Q
 
 ## Why
 
-Search endpoints attract bespoke query syntaxes. Each one arrives as an opaque string parameter (`?q=status:open AND born>2020`) that no schema can validate, no generator can type, and no client can build safely. Structuring the query as JSON changes that: it can be described by a JSON Schema, which means it can be referenced from OpenAPI, which means it validates in CI, appears in generated docs, and produces real types in generated clients.
+Search endpoints attract bespoke query syntaxes. Each one arrives as an opaque string parameter (`?q=status:open AND born>2020`) that no schema can validate, no generator can type, and no client can build safely. Structuring the query as JSON changes that: it can be described by a JSON Schema, and a JSON Schema is the interchange format both of today's API description layers already speak. From OpenAPI it validates in CI, appears in generated docs, and produces real types in generated clients. As an MCP tool's `inputSchema` it becomes the contract an LLM agent writes filters against — with the operator `description`s carried along as the instructions, instead of prose telling a model to assemble a string it can never be checked against.
 
 Confining the schema to the *predicate* — no projection, ordering or pagination — is what makes it reusable. Those parts differ per API; the filter does not.
 
@@ -185,7 +185,7 @@ Note that `items[*]` and `$elemMatch` differ: two wildcard constraints may be sa
 
 ## Using it from OpenAPI
 
-This is the point of the repo. Complete, CI-linted documents live in [`examples/`](./examples).
+One of the two integration paths this repo exists for; [Exposing search to an agent](#exposing-search-to-an-agent) covers the other. Complete, CI-linted documents live in [`examples/`](./examples).
 
 ### OpenAPI 3.1 — `POST /…/search`
 
@@ -257,9 +257,12 @@ Both work, and they trade off differently:
 | `$ref` | `https://…/v0.2.0/query-language-schema.json` | `./schemas/query-language-schema.json` |
 | Upgrades | change one URL | re-vendor the file |
 | Tooling | needs a resolver that fetches remote refs | works everywhere |
+| MCP `inputSchema` | no — nothing on that path resolves remote refs | yes, and it is the only option |
 | Field restriction | not possible | see below |
 
 If you bundle, keep the `$id` intact so consumers can tell which version they are looking at.
+
+The MCP row is not a preference. A server ships `inputSchema` inline in its `tools/list` response, so an absolute-URL `$ref` reaches the model as an opaque string and no grammar — see [Exposing search to an agent](#exposing-search-to-an-agent).
 
 ### Restricting the queryable field set
 
@@ -305,6 +308,28 @@ Rejected filters are reported as [RFC 9457](https://www.rfc-editor.org/rfc/rfc94
 ```
 
 Types: `malformed-query` · `unknown-field` · `unsupported-operator` · `invalid-operand` · `query-too-complex`. [SPEC.md §8](./SPEC.md#8-errors).
+
+## Exposing search to an agent
+
+An LLM agent calling your search endpoint — directly, or through an MCP server wrapping it — sees only the tool definition you hand it. It does not fetch this schema and it does not read [SPEC.md](./SPEC.md). Whatever a correct filter requires has to be present in that definition or in your capability document.
+
+The language does the syntactic work for you. A malformed filter, an unknown field and an unsupported operator all come back as a `400` with a `pointer` at the offending clause ([SPEC.md §8](./SPEC.md#8-errors)) — enough for an agent to repair its own request in one round trip. What the language cannot catch is a filter that is *valid and wrong*. Those fail as an empty result set, which an agent cannot distinguish from "no such records", so it reports a confident false negative. Three cases account for most of them:
+
+| Mistake | Why the agent makes it |
+| --- | --- |
+| `{"status": "Available"}` | Nothing told it the accepted values. |
+| `{"status": {"$ne": "archived"}}`, meaning "not archived" | Three-valued logic drops the `null`s — [SPEC.md §4.1](./SPEC.md#41-three-valued-logic). |
+| `{"tags": {"$in": ["urgent"]}}`, meaning array membership | `$in` compares the whole value. The element operator is `$hasAny`. |
+
+Five things close them:
+
+1. **Bundle the schema into the tool definition.** An MCP server ships `inputSchema` inline in its `tools/list` response, and nothing on that path resolves a remote `$ref` — an absolute-URL reference reaches the model as an opaque string and no grammar. Vendor the file; see [Referencing by URL or by copy](#referencing-by-url-or-by-copy).
+2. **Narrow `$defs/FieldPath` to the fields you expose.** Otherwise the tool definition says nothing about what is queryable and the agent learns your field names one `unknown-field` at a time. Prefer `anyOf` of `const` + `description` over a bare `enum` if you want per-field prose to survive — an `enum` has nowhere to document its members.
+3. **Publish the value domains.** The grammar cannot express them: every path shares one `Constraint`, so per-field operand types are not representable. Put `type`, `format` and `values` in your capability document ([SPEC.md §2.2](./SPEC.md#22-capability-discovery)) and restate any closed domain in the tool description.
+4. **Trim the operators to your profiles.** If you implement `core` and `strings`, delete the rest from the bundled copy so `$regex` is unavailable rather than rejected at runtime. `x-profiles` maps each profile to its operators; dropping `regex` means dropping `$flags` and its `dependentRequired` entry with it.
+5. **State the two silent rules explicitly** in the tool description: `$ne` and `$not` exclude nulls, and `$in` is not array membership. An agent that has not been told will not infer either.
+
+One MCP-specific note: define one tool per resource (`search_pets`, `search_orders`) rather than a single `search(resource, filter)`. `tools/list` is static, so a generic tool cannot vary its field list by argument — and that field list is most of what makes the tool usable.
 
 ## Safety
 
