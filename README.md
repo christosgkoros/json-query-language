@@ -36,21 +36,20 @@ Confining the schema to the *predicate* — no projection, ordering or paginatio
 
 ## Quickstart
 
-The schema is a single self-contained file. Install it, vendor it, or `$ref` it by URL.
+The schema is a single self-contained file. Nothing is published to a package registry yet — see [Status](#status) — so vendor it:
 
 ```bash
-npm install --save-dev json-query-language
-# or:  curl -O https://raw.githubusercontent.com/christosgkoros/json-query-language/main/query-language-schema.json
+curl -O https://raw.githubusercontent.com/christosgkoros/json-query-language/main/query-language-schema.json
 ```
 
-The same artifact is also published to GitHub Packages as `@christosgkoros/json-query-language` — GitHub Packages accepts only scoped names. It needs a token even for public packages, so npmjs is the easier path unless you are already authenticated there; see [RELEASING.md](./RELEASING.md#installing-from-github-packages).
+Swap `main` for a tag such as `v0.3.0` to pin a fixed copy.
 
 Validate a filter with any draft 2020-12 validator:
 
 ```js
 import Ajv2020 from 'ajv/dist/2020.js'
 import addFormats from 'ajv-formats'
-import schema from 'json-query-language/query-language-schema.json' with { type: 'json' }
+import schema from './query-language-schema.json' with { type: 'json' }   // the vendored copy
 
 const ajv = new Ajv2020({ allowUnionTypes: true })
 addFormats(ajv)
@@ -406,7 +405,7 @@ Filters themselves are unaffected apart from `$isnull` → `$isNull`; the v0.1.0
 ```
 query-language-schema.json     the schema — the only file you need to consume
 SPEC.md                        normative semantics
-RELEASING.md                   how a release reaches both registries
+RELEASING.md                   how a release is cut (no artifacts are published)
 COMPARISON.md                  how this relates to GraphQL, OData and JSON:API
 tools/generate-filter-schema.mjs   resource schema -> per-field filter schema + capabilities
 examples/                      working OpenAPI 3.1 and 3.2 documents
@@ -417,7 +416,7 @@ tests/fixtures/valid/          one per operator; also the docs' example set
 tests/fixtures/invalid/        every defect this version fixes, pinned
 experiments/filter-to-sql/     an exercise: compile a filter to SQL, then judge the design by it
 .github/workflows/ci.yml       tests on Node 20/22/24 + OpenAPI lint
-.github/workflows/release.yml  publishes on GitHub Release
+.github/workflows/release.yml  verifies a GitHub Release; publishes nothing
 ```
 
 `npm test` meta-validates the schema under ajv's strict mode, checks that `x-profiles` covers exactly the operators the grammar defines, validates every inline example against its own subschema, and runs all fixtures — invalid ones asserting *which* keyword rejected them, so a fixture cannot pass for the wrong reason. It also compiles the generated pet filter schema, asserts that everything it accepts the published grammar accepts too, and checks the committed `examples/pet.filter.json` against a fresh run so it cannot drift. `npm run generate:example` refreshes it.
@@ -433,8 +432,7 @@ experiments/filter-to-sql/     an exercise: compile a filter to SQL, then judge 
 | What the README says | Reality today |
 | --- | --- |
 | `$id` / `$ref` — `https://christosgkoros.com/json/query-language/v0.3.0/query-language-schema.json` | Does not resolve. Used throughout [Using it from OpenAPI](#using-it-from-openapi) and in the capability document examples. |
-| `npm install --save-dev json-query-language` | Not published to npmjs. |
-| `@christosgkoros/json-query-language` on GitHub Packages | Not published. |
+| The package names `json-query-language` and `@christosgkoros/json-query-language` | Not published, to npmjs or to GitHub Packages, and the release pipeline no longer tries to. Claiming a name under a working title would burn it. |
 | The version line at the top, and the version inside the `$id` | May lag the latest tag. `CHANGELOG.md` is authoritative. |
 
 These will be fixed in one pass once the name is fixed, because fixing them before then means doing it twice. Until then the only fetchable copy of the schema is raw GitHub:

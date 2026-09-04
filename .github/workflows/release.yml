@@ -1,19 +1,19 @@
 name: Release
 
-# Publishing is irreversible, so the trigger is a deliberate act: draft a
-# GitHub Release, publish it, and this ships the same commit to both registries.
+# Nothing is published from this repository yet — see the "Status" section of
+# the README. Until the name is settled there is no artifact worth shipping to
+# a registry, so this workflow only *checks* a release: it runs the test suite
+# and asserts the release tag agrees with package.json.
 #
-# Use the workflow_dispatch entry point to rehearse — it defaults to a dry run,
-# which exercises every step including auth and packaging without uploading.
+# The publish jobs (npmjs.com and GitHub Packages, both with the
+# already-published guard) were removed in the 0.3.0 cycle. To bring them back,
+# restore them from git history rather than rewriting them:
+#
+#   git log --oneline -- .github/workflows/release.yml
 on:
   release:
     types: [published]
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: Rehearse without publishing anything
-        type: boolean
-        default: true
 
 # No ambient permissions; each job asks for exactly what it needs.
 permissions: {}
@@ -24,10 +24,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    outputs:
-      version: ${{ steps.resolve.outputs.version }}
-      npm-tag: ${{ steps.resolve.outputs.npm-tag }}
-      dry-run: ${{ steps.resolve.outputs.dry-run }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -38,33 +34,20 @@ jobs:
       - run: npm ci
       - run: npm test
 
-      - name: Resolve version and publish tag
+      - name: Check the tag matches package.json
         id: resolve
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
-          IS_PRERELEASE: ${{ github.event.release.prerelease }}
-          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-          # A release tag that disagrees with package.json means the registry
+          # A release tag that disagrees with package.json means the repository
           # and the release notes would describe different things.
-          if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
-            if [ "${RELEASE_TAG#v}" != "$version" ]; then
-              echo "::error::Release tag '${RELEASE_TAG}' does not match package.json version '${version}'."
-              exit 1
-            fi
-            if [ "$IS_PRERELEASE" = "true" ]; then
-              echo "npm-tag=next" >> "$GITHUB_OUTPUT"
-            else
-              echo "npm-tag=latest" >> "$GITHUB_OUTPUT"
-            fi
-            echo "dry-run=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "npm-tag=latest" >> "$GITHUB_OUTPUT"
-            echo "dry-run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
+          if [ "${GITHUB_EVENT_NAME}" = "release" ] && [ "${RELEASE_TAG#v}" != "$version" ]; then
+            echo "::error::Release tag '${RELEASE_TAG}' does not match package.json version '${version}'."
+            exit 1
           fi
 
       - name: Summarise
@@ -73,94 +56,5 @@ jobs:
             echo "| | |"
             echo "| --- | --- |"
             echo "| Version | \`${{ steps.resolve.outputs.version }}\` |"
-            echo "| npm dist-tag | \`${{ steps.resolve.outputs.npm-tag }}\` |"
-            echo "| Dry run | \`${{ steps.resolve.outputs.dry-run }}\` |"
+            echo "| Published to | _nothing — this repository ships no artifacts yet_ |"
           } >> "$GITHUB_STEP_SUMMARY"
-
-  npmjs:
-    name: Publish to npmjs.com
-    needs: verify
-    runs-on: ubuntu-latest
-    environment: release
-    permissions:
-      contents: read
-      id-token: write # provenance attestation
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          registry-url: https://registry.npmjs.org
-
-      # `npm publish --dry-run` does not authenticate, so it cannot tell you the
-      # token is wrong. This does — it is the only step in a rehearsal that
-      # actually proves the credential works.
-      - name: Check authentication
-        run: npm whoami
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      # One registry can succeed while the other fails, so a re-run must not
-      # trip over its own earlier success.
-      - name: Skip if this version is already published
-        id: exists
-        run: .github/scripts/version-published.sh
-        env:
-          VERSION: ${{ needs.verify.outputs.version }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      # --provenance links the tarball to this workflow run and this commit,
-      # so consumers can verify where it was built. Requires id-token: write.
-      - name: Publish
-        if: steps.exists.outputs.published != 'true'
-        run: |
-          npm publish \
-            --provenance \
-            --access public \
-            --tag '${{ needs.verify.outputs.npm-tag }}' \
-            ${{ needs.verify.outputs.dry-run == 'true' && '--dry-run' || '' }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-  github-packages:
-    name: Publish to GitHub Packages
-    needs: verify
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          registry-url: https://npm.pkg.github.com
-          scope: '@${{ github.repository_owner }}'
-
-      # GitHub Packages only accepts scoped names, and the scope must be the
-      # repository owner. npmjs.com carries the unscoped name, so rewrite it
-      # here — the tarball contents are otherwise identical.
-      - name: Scope the package name
-        run: npm pkg set name="@${{ github.repository_owner }}/${{ github.event.repository.name }}"
-
-      - name: Check authentication
-        run: npm whoami --registry=https://npm.pkg.github.com
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Skip if this version is already published
-        id: exists
-        run: .github/scripts/version-published.sh
-        env:
-          VERSION: ${{ needs.verify.outputs.version }}
-          REGISTRY: https://npm.pkg.github.com
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish
-        if: steps.exists.outputs.published != 'true'
-        run: |
-          npm publish \
-            --tag '${{ needs.verify.outputs.npm-tag }}' \
-            ${{ needs.verify.outputs.dry-run == 'true' && '--dry-run' || '' }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
