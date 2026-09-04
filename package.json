@@ -1,6 +1,6 @@
 {
   "name": "json-query-language",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A JSON-encoded, SQL-flavoured predicate language for POST /search and QUERY request bodies, described by a JSON Schema you can $ref from OpenAPI.",
   "type": "module",
   "license": "MIT",

@@ -5,6 +5,32 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — with the pre-1.0 caveat that a
 minor release may break compatibility, in which case the break is spelled out below.
 
+## [0.3.1] — 2026-09-04
+
+No change to the schema, the grammar or the semantics. `query-language-schema.json` is
+byte-identical to 0.3.0 and its `$id` still names `v0.3.0`, because the `$id` version tracks the
+grammar and the grammar did not move. Consumers pinning that `$id` have nothing to do.
+
+### Removed
+
+- **Publishing.** The release workflow no longer ships to npmjs.com or GitHub Packages. Neither
+  registry ever received a copy, and while the name is a working title neither should: publishing
+  under a placeholder claims the name, and npm blocks a name from reuse permanently once it has
+  been published and unpublished. `.github/workflows/release.yml` now only verifies a release —
+  the test suite, and the tag-against-`package.json` check — and uploads nothing. The
+  `NPM_TOKEN` secret and `.github/scripts/version-published.sh` are deleted with it.
+  [RELEASING.md](./RELEASING.md#turning-publishing-back-on) keeps what the jobs needed, so they
+  can be restored from git history rather than rewritten.
+
+### Changed
+
+- **README no longer offers an install that does not exist.** The Quickstart opened with
+  `npm install --save-dev json-query-language`, which the README's own *Status* table already
+  contradicted two screens further down. It now vendors the file by `curl`, which is the only
+  way to obtain the schema and always was.
+- **[RELEASING.md](./RELEASING.md) documents the process that exists** — a tag and a GitHub
+  Release, carrying notes and a source snapshot and nothing else.
+
 ## [0.3.0] — 2026-09-04
 
 Guidance for adopters exposing a search endpoint to an LLM agent, the tooling that acts on it,
@@ -157,6 +183,7 @@ Initial research draft: `$and`, `$or`, `$not` over eight leaf condition types
 (`$eq`, `$ne`, `$in`, `$nin`, `$like`, `$nlike`, `$gt`/`$gte`/`$lt`/`$lte`/`$between`, `$isnull`),
 laid out as an OpenAPI `components.schemas` fragment.
 
+[0.3.1]: https://github.com/christosgkoros/json-query-language/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/christosgkoros/json-query-language/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/christosgkoros/json-query-language/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/christosgkoros/json-query-language/releases/tag/v0.1.0

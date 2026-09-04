@@ -22,7 +22,7 @@ Write the filter grammar once. Use it for every `POST /…/search` and `QUERY /�
 - **Integration examples** — [`examples/`](./examples) — working OpenAPI 3.1 and 3.2 documents
 - **Generator** — [`tools/generate-filter-schema.mjs`](./tools/generate-filter-schema.mjs) — turns a resource's JSON Schema into a per-field filter schema
 - **Compared with GraphQL** — [`COMPARISON.md`](./COMPARISON.md) — what this overlaps with, what it does not, and what a JSON-Schema-native alternative would still need
-- **Version** — `0.3.0`. See [`CHANGELOG.md`](./CHANGELOG.md) for the v0.1.0 migration.
+- **Version** — `0.3.1`. The schema's `$id` still names `v0.3.0`: the `$id` tracks the grammar, and 0.3.1 changed only the release process. See [`CHANGELOG.md`](./CHANGELOG.md) for the v0.1.0 migration.
 
 > **Work in progress — including the name.** This is a design published for review, not a distribution you can depend on yet. The artifact's own name is a working title, and every identifier that follows from it — the package names, the schema `$id`, the URLs in the integration examples — is a placeholder. Several do not currently resolve, and getting them right is deliberately not a goal until the name is settled. The grammar and its semantics are the part worth reviewing. See [Status](#status) before you try to install or `$ref` anything.
 
