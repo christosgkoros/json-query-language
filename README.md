@@ -415,6 +415,7 @@ tests/validate.test.mjs        meta-validation + fixture runner
 tests/generator.test.mjs       the generator: narrowing, soundness, recursion
 tests/fixtures/valid/          one per operator; also the docs' example set
 tests/fixtures/invalid/        every defect this version fixes, pinned
+experiments/filter-to-sql/     an exercise: compile a filter to SQL, then judge the design by it
 .github/workflows/ci.yml       tests on Node 20/22/24 + OpenAPI lint
 .github/workflows/release.yml  publishes on GitHub Release
 ```

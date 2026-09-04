@@ -35,7 +35,9 @@
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "generate": "node tools/generate-filter-schema.mjs",
-    "generate:example": "node tools/generate-filter-schema.mjs examples/pet.schema.json --id https://api.example.com/schemas/pet.filter.json --out examples/pet.filter.json --capabilities examples/pet.capabilities.json"
+    "generate:example": "node tools/generate-filter-schema.mjs examples/pet.schema.json --id https://api.example.com/schemas/pet.filter.json --out examples/pet.filter.json --capabilities examples/pet.capabilities.json",
+    "test:experiment": "node --test experiments/filter-to-sql/compile.test.mjs",
+    "experiment": "node experiments/filter-to-sql/run.mjs"
   },
   "devDependencies": {
     "ajv": "^8.17.1",
