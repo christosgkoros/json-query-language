@@ -33,7 +33,9 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "generate": "node tools/generate-filter-schema.mjs",
+    "generate:example": "node tools/generate-filter-schema.mjs examples/pet.schema.json --id https://api.example.com/schemas/pet.filter.json --out examples/pet.filter.json --capabilities examples/pet.capabilities.json"
   },
   "devDependencies": {
     "ajv": "^8.17.1",

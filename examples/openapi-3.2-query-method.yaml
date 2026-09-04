@@ -1,12 +1,13 @@
 # OpenAPI 3.2 — the QUERY HTTP method.
 #
 # 3.2 added `additionalOperations` to the Path Item Object, which is how methods
-# outside the fixed set are described. QUERY (draft-ietf-httpbis-safe-method-w-body)
-# is safe and idempotent and carries a request body, which is exactly what a
-# search needs: it says "this is a read" in a way POST cannot.
+# outside the fixed set are described. QUERY (RFC 10008) is safe and idempotent
+# and carries a request body, which is exactly what a search needs: it says
+# "this is a read" in a way POST cannot.
 #
-# QUERY is still an IETF draft, so ship POST /search alongside it — see
-# openapi-3.1-post-search.yaml — and let clients negotiate.
+# QUERY is standards-track as of June 2026, but deployed support trails the RFC,
+# so ship POST /search alongside it — see openapi-3.1-post-search.yaml — and let
+# clients negotiate.
 openapi: 3.2.0
 
 info:

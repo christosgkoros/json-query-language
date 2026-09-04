@@ -1,0 +1,239 @@
+{
+  "queryLanguage": "https://christosgkoros.com/json/query-language/v0.3.0/query-language-schema.json",
+  "filterSchema": "https://api.example.com/schemas/pet.filter.json",
+  "profiles": [
+    "core",
+    "strings",
+    "ranges",
+    "collections"
+  ],
+  "fields": {
+    "id": {
+      "operators": [
+        "$eq",
+        "$ne",
+        "$in",
+        "$nin",
+        "$not"
+      ],
+      "type": "string",
+      "format": "uuid",
+      "description": "Stable identifier."
+    },
+    "name": {
+      "operators": [
+        "$eq",
+        "$ne",
+        "$in",
+        "$nin",
+        "$like",
+        "$nlike",
+        "$ilike",
+        "$nilike",
+        "$startsWith",
+        "$endsWith",
+        "$contains",
+        "$not"
+      ],
+      "type": "string",
+      "description": "Display name."
+    },
+    "species": {
+      "operators": [
+        "$eq",
+        "$ne",
+        "$in",
+        "$nin",
+        "$exists",
+        "$not"
+      ],
+      "type": "string",
+      "values": [
+        "cat",
+        "dog",
+        "rabbit",
+        "bird"
+      ],
+      "description": "Taxon, coarse-grained."
+    },
+    "status": {
+      "operators": [
+        "$eq",
+        "$ne",
+        "$in",
+        "$nin",
+        "$not"
+      ],
+      "type": "string",
+      "values": [
+        "available",
+        "pending",
+        "sold"
+      ],
+      "description": "Listing state."
+    },
+    "born": {
+      "operators": [
+        "$eq",
+        "$ne",
+        "$in",
+        "$nin",
+        "$gt",
+        "$gte",
+        "$lt",
+        "$lte",
+        "$between",
+        "$nbetween",
+        "$exists",
+        "$not"
+      ],
+      "type": "string",
+      "format": "date",
+      "description": "Date of birth, RFC 3339 full-date."
+    },
+    "weightKg": {
+      "operators": [
+        "$eq",
+        "$ne",
+        "$in",
+        "$nin",
+        "$gt",
+        "$gte",
+        "$lt",
+        "$lte",
+        "$between",
+        "$nbetween",
+        "$exists",
+        "$not"
+      ],
+      "type": "number",
+      "description": "Last recorded weight."
+    },
+    "neutered": {
+      "operators": [
+        "$eq",
+        "$ne",
+        "$exists",
+        "$not"
+      ],
+      "type": "boolean",
+      "description": "Whether the pet has been neutered."
+    },
+    "microchip": {
+      "operators": [
+        "$eq",
+        "$ne",
+        "$in",
+        "$nin",
+        "$like",
+        "$nlike",
+        "$ilike",
+        "$nilike",
+        "$startsWith",
+        "$endsWith",
+        "$contains",
+        "$exists",
+        "$isNull",
+        "$not"
+      ],
+      "type": "string",
+      "description": "Chip number, null if unchipped.",
+      "nullable": true
+    },
+    "tags": {
+      "operators": [
+        "$eq",
+        "$ne",
+        "$hasAny",
+        "$hasAll",
+        "$hasNone",
+        "$size",
+        "$elemMatch",
+        "$exists",
+        "$not"
+      ],
+      "type": "array",
+      "description": "Free-form labels used for browsing."
+    },
+    "shelter": {
+      "operators": [
+        "$exists"
+      ],
+      "type": "object",
+      "description": "Where the pet is housed."
+    },
+    "shelter.name": {
+      "operators": [
+        "$eq",
+        "$ne",
+        "$in",
+        "$nin",
+        "$like",
+        "$nlike",
+        "$ilike",
+        "$nilike",
+        "$startsWith",
+        "$endsWith",
+        "$contains",
+        "$exists",
+        "$not"
+      ],
+      "type": "string",
+      "description": "Shelter name."
+    },
+    "shelter.city": {
+      "operators": [
+        "$eq",
+        "$ne",
+        "$in",
+        "$nin",
+        "$like",
+        "$nlike",
+        "$ilike",
+        "$nilike",
+        "$startsWith",
+        "$endsWith",
+        "$contains",
+        "$exists",
+        "$not"
+      ],
+      "type": "string",
+      "description": "Shelter city."
+    },
+    "shelter.capacity": {
+      "operators": [
+        "$eq",
+        "$ne",
+        "$in",
+        "$nin",
+        "$gt",
+        "$gte",
+        "$lt",
+        "$lte",
+        "$between",
+        "$nbetween",
+        "$exists",
+        "$not"
+      ],
+      "type": "integer",
+      "description": "Total kennels."
+    },
+    "vaccinations": {
+      "operators": [
+        "$eq",
+        "$ne",
+        "$size",
+        "$elemMatch",
+        "$exists",
+        "$not"
+      ],
+      "type": "array",
+      "description": "Vaccination history."
+    }
+  },
+  "limits": {
+    "maxDepth": 10,
+    "maxClauses": 100,
+    "maxSetLength": 1000
+  }
+}

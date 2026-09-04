@@ -72,7 +72,7 @@ components:
     # A relative $ref keeps this example self-contained and lets CI verify that
     # the document resolves. In a published API you would instead point at the
     # absolute, versioned $id:
-    #   $ref: 'https://christosgkoros.com/json/query-language/v0.2.0/query-language-schema.json'
+    #   $ref: 'https://christosgkoros.com/json/query-language/v0.3.0/query-language-schema.json'
     Filter:
       $ref: '../query-language-schema.json'
 

@@ -1,6 +1,6 @@
 # JSON Query Language — Specification
 
-**Version 0.2.0** · Dialect: JSON Schema draft 2020-12 · Schema: [`query-language-schema.json`](./query-language-schema.json)
+**Version 0.3.0** · Dialect: JSON Schema draft 2020-12 · Schema: [`query-language-schema.json`](./query-language-schema.json)
 
 This document defines the semantics of the language. The schema defines only its *shape* — a validator can tell you that `{"age": {"$gt": 18}}` is well-formed, but not what it means when `age` is `null`, absent, or a string. Everything a server and a client must agree on beyond well-formedness is specified here.
 
@@ -49,7 +49,7 @@ An implementation SHOULD publish which profiles and fields it accepts. This spec
 
 ```json
 {
-  "queryLanguage": "https://christosgkoros.com/json/query-language/v0.2.0/query-language-schema.json",
+  "queryLanguage": "https://christosgkoros.com/json/query-language/v0.3.0/query-language-schema.json",
   "profiles": ["core", "strings", "ranges"],
   "fields": {
     "status": {
@@ -398,7 +398,7 @@ A server MUST report the first error it finds rather than partially evaluating, 
 
 ## 9. Versioning
 
-The schema's `$id` carries the version: `…/v0.2.0/query-language-schema.json`. Each release is published at its own URL and, once published, is immutable. Consumers pin by `$id`.
+The schema's `$id` carries the version: `…/v0.3.0/query-language-schema.json`. Each release is published at its own URL and, once published, is immutable. Consumers pin by `$id`.
 
 - **Patch** — documentation and description text only.
 - **Minor** — new optional operators or profiles. A filter valid under `v0.N` stays valid under `v0.N+1`.
@@ -413,6 +413,6 @@ Before `1.0.0` a minor release MAY break compatibility; each such break is recor
 - [RFC 6901](https://www.rfc-editor.org/rfc/rfc6901) — JSON Pointer
 - [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) — Problem Details for HTTP APIs
 - [JSON Schema draft 2020-12](https://json-schema.org/draft/2020-12/release-notes)
-- [draft-ietf-httpbis-safe-method-w-body](https://datatracker.ietf.org/doc/draft-ietf-httpbis-safe-method-w-body/) — the QUERY method
+- [RFC 10008](https://www.rfc-editor.org/rfc/rfc10008) — the HTTP QUERY method
 - [OpenAPI 3.1](https://spec.openapis.org/oas/v3.1.0) · [OpenAPI 3.2](https://spec.openapis.org/oas/v3.2.0)
 - [ECMA-262 §22.2](https://tc39.es/ecma262/#sec-regexp-regular-expression-objects) — regular expressions

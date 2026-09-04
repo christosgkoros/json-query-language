@@ -20,7 +20,11 @@ Write the filter grammar once. Use it for every `POST /…/search` and `QUERY /�
 - **Schema** — [`query-language-schema.json`](./query-language-schema.json) (JSON Schema draft 2020-12)
 - **Semantics** — [`SPEC.md`](./SPEC.md) — nulls, paths, coercion, errors, limits
 - **Integration examples** — [`examples/`](./examples) — working OpenAPI 3.1 and 3.2 documents
-- **Version** — `0.2.0`. See [`CHANGELOG.md`](./CHANGELOG.md) for the v0.1.0 migration.
+- **Generator** — [`tools/generate-filter-schema.mjs`](./tools/generate-filter-schema.mjs) — turns a resource's JSON Schema into a per-field filter schema
+- **Compared with GraphQL** — [`COMPARISON.md`](./COMPARISON.md) — what this overlaps with, what it does not, and what a JSON-Schema-native alternative would still need
+- **Version** — `0.3.0`. See [`CHANGELOG.md`](./CHANGELOG.md) for the v0.1.0 migration.
+
+> **Work in progress — including the name.** This is a design published for review, not a distribution you can depend on yet. The artifact's own name is a working title, and every identifier that follows from it — the package names, the schema `$id`, the URLs in the integration examples — is a placeholder. Several do not currently resolve, and getting them right is deliberately not a goal until the name is settled. The grammar and its semantics are the part worth reviewing. See [Status](#status) before you try to install or `$ref` anything.
 
 ---
 
@@ -209,7 +213,7 @@ paths:
 components:
   schemas:
     Filter:
-      $ref: 'https://christosgkoros.com/json/query-language/v0.2.0/query-language-schema.json'
+      $ref: 'https://christosgkoros.com/json/query-language/v0.3.0/query-language-schema.json'
     PetSearchRequest:
       type: object
       required: [filter]
@@ -244,9 +248,9 @@ paths:
 
 → [`examples/openapi-3.2-query-method.yaml`](./examples/openapi-3.2-query-method.yaml)
 
-`QUERY` ([draft-ietf-httpbis-safe-method-w-body](https://datatracker.ietf.org/doc/draft-ietf-httpbis-safe-method-w-body/)) is **safe and idempotent** and carries a request body — it says "this is a read" in a way `POST` cannot, so intermediaries may cache it and clients may retry it. Return `Content-Location` when the same representation is also reachable by `GET`.
+`QUERY` ([RFC 10008](https://www.rfc-editor.org/rfc/rfc10008)) is **safe and idempotent** and carries a request body — it says "this is a read" in a way `POST` cannot, so intermediaries may cache it and clients may retry it. Return `Content-Location` when the same representation is also reachable by `GET`.
 
-It is still an IETF draft. Ship `POST /search` alongside it and let clients pick.
+It became a standards-track RFC in June 2026, so the method itself is settled — but deployed support in intermediaries, client libraries and gateways trails a fresh RFC by some margin. Ship `POST /search` alongside it and let clients pick.
 
 ### Referencing by URL or by copy
 
@@ -254,7 +258,7 @@ Both work, and they trade off differently:
 
 | | Absolute `$id` URL | Bundled copy |
 | --- | --- | --- |
-| `$ref` | `https://…/v0.2.0/query-language-schema.json` | `./schemas/query-language-schema.json` |
+| `$ref` | `https://…/v0.3.0/query-language-schema.json` | `./schemas/query-language-schema.json` |
 | Upgrades | change one URL | re-vendor the file |
 | Tooling | needs a resolver that fetches remote refs | works everywhere |
 | MCP `inputSchema` | no — nothing on that path resolves remote refs | yes, and it is the only option |
@@ -283,6 +287,8 @@ Bundle the schema and replace **one** definition, `$defs/FieldPath`:
 
 The narrowing applies at **every nesting level** — inside `$and`, inside `$not`, inside `$elemMatch`, and to `$field` references — because `Filter` reaches field names through `propertyNames → $ref '#/$defs/FieldPath'`. There is one override point, and this is it. (`tests/validate.test.mjs` exercises exactly this.)
 
+Narrowing `FieldPath` restricts *which* fields may be named. It cannot restrict what may be said about them — every path still shares one `Constraint`. To get per-field operators and operand domains as well, generate the schema instead; see [Generating a per-resource filter schema](#generating-a-per-resource-filter-schema).
+
 > An earlier design used draft 2020-12 `$dynamicRef`/`$dynamicAnchor` so the override could be applied *without* copying the file. It was dropped: ajv 8.20 does not resolve it correctly even for the canonical recursive case, and OpenAPI tooling support is worse. A plain `$ref` works in every validator.
 
 ## Conformance profiles
@@ -309,6 +315,49 @@ Rejected filters are reported as [RFC 9457](https://www.rfc-editor.org/rfc/rfc94
 
 Types: `malformed-query` · `unknown-field` · `unsupported-operator` · `invalid-operand` · `query-too-complex`. [SPEC.md §8](./SPEC.md#8-errors).
 
+## Generating a per-resource filter schema
+
+The published grammar shares one `Constraint` definition across every field, which is what makes it reusable — and what stops it carrying per-field domains. It can tell you `{"status": "Available"}` is well-formed. It cannot tell you `"Available"` is not one of the three values `status` takes, so the filter is accepted and matches nothing.
+
+If you already have a JSON Schema for the resource, that information is sitting right there. [`tools/generate-filter-schema.mjs`](./tools/generate-filter-schema.mjs) reads it and emits a filter schema in which every queryable path has its own constraint subschema, carrying only the operators that apply to it and only the operands it can take.
+
+```bash
+node tools/generate-filter-schema.mjs examples/pet.schema.json \
+  --id https://api.example.com/schemas/pet.filter.json \
+  --profiles core,strings,ranges,collections \
+  --capabilities pet.capabilities.json \
+  --out pet.filter.json
+```
+
+Given [`examples/pet.schema.json`](./examples/pet.schema.json), the generated [`pet.filter.json`](./examples/pet.filter.json) turns each of these from an empty result set into a `400`:
+
+| Filter | Rejected because |
+| --- | --- |
+| `{"status": "Available"}` | `status` is a closed domain of `available`, `pending`, `sold` |
+| `{"tags": {"$in": ["urgent"]}}` | `tags` is an array; its operators are `$hasAny`, `$hasAll`, `$hasNone` |
+| `{"born": {"$gte": 2020}}` | `born` is a `date`-formatted string |
+| `{"name": {"$gt": "M"}}` | ordering is offered on numbers and on date/time formats, not on free text |
+| `{"species": {"$like": "ca%"}}` | pattern matching is not offered on an enumerated domain |
+| `{"birthDate": "2020-01-01"}` | not a property of the resource |
+
+It also writes the [SPEC.md §2.2](./SPEC.md#22-capability-discovery) capability document from the same source, so the schema and the published domains cannot drift apart.
+
+What it decides, and why:
+
+- **Operators follow the type.** Ordering and ranges go to numbers and to `date`/`date-time`/`time` strings; pattern matching goes to free text but not to enums or opaque formats like `uuid`; `$hasAny`/`$hasAll`/`$hasNone` go to arrays of scalars; `$elemMatch` recurses into arrays of objects. `$exists` is omitted where the property is required all the way up, and `$isNull` where the type does not admit null — both would be constants.
+- **Operands follow the value domain.** `$eq`, `$in` and friends carry the field's `enum`, `pattern` and bounds. The ordering operators deliberately do not: `{"$gt": 0}` against a field whose `minimum` is 1 is a sensible predicate.
+- **Prose comes from the grammar**, not from the generator, so operator descriptions stay in one place. `--descriptions brief` (the default) keeps them for the operators people get wrong and drops them for `$eq` and `$gt`, which matters when the output goes into an MCP tool definition.
+- **Narrowing only.** Every filter the generated schema accepts is also valid against the published grammar, so a server implementing the published semantics evaluates it unchanged. `tests/generator.test.mjs` asserts this.
+
+Opt a property out, or override its operators, from the resource schema itself:
+
+```json
+{ "internalNotes": { "type": "string", "x-jql": false } }
+{ "location":      { "type": "string", "x-jql": { "operators": ["$eq", "$in"] } } }
+```
+
+`--include`, `--exclude`, `--max-depth` and `--pointer` do the rest. Run `--help` for the full list.
+
 ## Exposing search to an agent
 
 An LLM agent calling your search endpoint — directly, or through an MCP server wrapping it — sees only the tool definition you hand it. It does not fetch this schema and it does not read [SPEC.md](./SPEC.md). Whatever a correct filter requires has to be present in that definition or in your capability document.
@@ -321,7 +370,7 @@ The language does the syntactic work for you. A malformed filter, an unknown fie
 | `{"status": {"$ne": "archived"}}`, meaning "not archived" | Three-valued logic drops the `null`s — [SPEC.md §4.1](./SPEC.md#41-three-valued-logic). |
 | `{"tags": {"$in": ["urgent"]}}`, meaning array membership | `$in` compares the whole value. The element operator is `$hasAny`. |
 
-Five things close them:
+Five things close them — and [the generator](#generating-a-per-resource-filter-schema) does the first four for you, from your resource schema:
 
 1. **Bundle the schema into the tool definition.** An MCP server ships `inputSchema` inline in its `tools/list` response, and nothing on that path resolves a remote `$ref` — an absolute-URL reference reaches the model as an opaque string and no grammar. Vendor the file; see [Referencing by URL or by copy](#referencing-by-url-or-by-copy).
 2. **Narrow `$defs/FieldPath` to the fields you expose.** Otherwise the tool definition says nothing about what is queryable and the agent learns your field names one `unknown-field` at a time. Prefer `anyOf` of `const` + `description` over a bare `enum` if you want per-field prose to survive — an `enum` has nowhere to document its members.
@@ -358,19 +407,44 @@ Filters themselves are unaffected apart from `$isnull` → `$isNull`; the v0.1.0
 query-language-schema.json     the schema — the only file you need to consume
 SPEC.md                        normative semantics
 RELEASING.md                   how a release reaches both registries
+COMPARISON.md                  how this relates to GraphQL, OData and JSON:API
+tools/generate-filter-schema.mjs   resource schema -> per-field filter schema + capabilities
 examples/                      working OpenAPI 3.1 and 3.2 documents
+examples/pet.schema.json       the generator's input, and its committed output beside it
 tests/validate.test.mjs        meta-validation + fixture runner
+tests/generator.test.mjs       the generator: narrowing, soundness, recursion
 tests/fixtures/valid/          one per operator; also the docs' example set
 tests/fixtures/invalid/        every defect this version fixes, pinned
 .github/workflows/ci.yml       tests on Node 20/22/24 + OpenAPI lint
 .github/workflows/release.yml  publishes on GitHub Release
 ```
 
-`npm test` meta-validates the schema under ajv's strict mode, checks that `x-profiles` covers exactly the operators the grammar defines, validates every inline example against its own subschema, and runs all fixtures — invalid ones asserting *which* keyword rejected them, so a fixture cannot pass for the wrong reason.
+`npm test` meta-validates the schema under ajv's strict mode, checks that `x-profiles` covers exactly the operators the grammar defines, validates every inline example against its own subschema, and runs all fixtures — invalid ones asserting *which* keyword rejected them, so a fixture cannot pass for the wrong reason. It also compiles the generated pet filter schema, asserts that everything it accepts the published grammar accepts too, and checks the committed `examples/pet.filter.json` against a fresh run so it cannot drift. `npm run generate:example` refreshes it.
 
 ## Status
 
-Pre-1.0. The grammar may still change; each break is recorded in the changelog with a migration note. Pin the versioned `$id`.
+**Work in progress.** Pre-1.0 and pre-naming. This repository is published so the design can be read and argued with; it is not yet packaged for consumption, and the two should not be confused.
+
+**The name is not settled.** *JSON Query Language* is a working title. If the artifact is renamed before 1.0 — which is likely — the repository URL, both package names and the schema `$id` all change together. Everything downstream of the name is therefore provisional by construction.
+
+**Identifiers in this README are placeholders, and their accuracy is not a current goal.** Concretely, and so nobody has to discover it the hard way:
+
+| What the README says | Reality today |
+| --- | --- |
+| `$id` / `$ref` — `https://christosgkoros.com/json/query-language/v0.3.0/query-language-schema.json` | Does not resolve. Used throughout [Using it from OpenAPI](#using-it-from-openapi) and in the capability document examples. |
+| `npm install --save-dev json-query-language` | Not published to npmjs. |
+| `@christosgkoros/json-query-language` on GitHub Packages | Not published. |
+| The version line at the top, and the version inside the `$id` | May lag the latest tag. `CHANGELOG.md` is authoritative. |
+
+These will be fixed in one pass once the name is fixed, because fixing them before then means doing it twice. Until then the only fetchable copy of the schema is raw GitHub:
+
+```bash
+curl -O https://raw.githubusercontent.com/christosgkoros/json-query-language/main/query-language-schema.json
+```
+
+Vendor that file rather than referencing it remotely, and treat the resolvable-`$id` workflow the OpenAPI sections describe as the intended end state rather than a description of today.
+
+**What is stable enough to review.** The grammar, the operator set and profile grouping, the null and three-valued semantics, and the error model. Those are what the schema, [`SPEC.md`](./SPEC.md) and the test suite pin down, and they are what feedback is most useful on. The grammar may still change before 1.0; each break is recorded in [`CHANGELOG.md`](./CHANGELOG.md) with a migration note.
 
 ## License
 

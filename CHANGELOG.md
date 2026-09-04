@@ -5,10 +5,12 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — with the pre-1.0 caveat that a
 minor release may break compatibility, in which case the break is spelled out below.
 
-## [0.3.0] — 2026-08-25
+## [0.3.0] — 2026-09-04
 
-Guidance for adopters exposing a search endpoint to an LLM agent. No grammar change: filters
-valid under v0.2.0 remain valid, and the only schema edit is to two `description` annotations.
+Guidance for adopters exposing a search endpoint to an LLM agent, the tooling that acts on it,
+and an honest statement of how finished this is. No grammar change: every filter valid under
+v0.2.0 remains valid, and the only edits to `query-language-schema.json` are two `description`
+annotations and its version strings.
 
 ### Added
 
@@ -27,6 +29,26 @@ valid under v0.2.0 remain valid, and the only schema edit is to two `description
   them (bundle rather than remote-`$ref`, narrow `FieldPath`, publish value domains, trim to
   advertised profiles, state the null and `$in` semantics in the tool description).
 
+- **`tools/generate-filter-schema.mjs`** — derives a per-resource filter schema from the
+  resource's own JSON Schema. The published grammar shares one `Constraint` across every field,
+  so it can say `{"status": "Available"}` is well-formed but not that `"Available"` is outside
+  `status`'s domain; that is why [SPEC.md §2.2](./SPEC.md#22-capability-discovery) exists. A
+  generated schema gives each queryable path its own constraint subschema, carrying only the
+  operators that apply to its type and only the operands its domain admits — so the three
+  valid-but-wrong filters catalogued in README §*Exposing search to an agent* become validation
+  failures instead of empty result sets. The generator emits the §2.2 capability document from
+  the same source, and copies operator prose out of the published grammar rather than restating
+  it. Generation is narrowing only: every filter a generated schema accepts is valid against the
+  published grammar, which `tests/generator.test.mjs` asserts.
+- **`COMPARISON.md`** — how this specification relates to GraphQL, and what a JSON-Schema-native
+  alternative to GraphQL would still need. The short version: GraphQL never standardised
+  filtering, so the two overlap far less than the question assumes. Also covers OData, JSON:API,
+  OGC CQL2 and JSON Hyper-Schema as prior art.
+- **`examples/pet.schema.json`** with its generated `pet.filter.json` and `pet.capabilities.json`
+  committed beside it, and `npm run generate:example` to refresh them. A test fails if they drift.
+- **README §*Generating a per-resource filter schema*** — what the generator decides and why, and
+  the `x-jql` property annotations that override it.
+
 ### Changed
 
 - **README framing.** The schema is presented as feeding two integration paths rather than
@@ -38,6 +60,19 @@ valid under v0.2.0 remain valid, and the only schema edit is to two `description
   array membership, naming `$hasAny`/`$hasNone` as the element operators. `$contains` already
   warned about the same crossover; these two did not, and they are the operators a client
   carrying MongoDB habits reaches for first.
+- **`$id` is now `…/v0.3.0/query-language-schema.json`.** Consumers pin by `$id`, so the version
+  in the path moves with the release. `SPEC.md`, the OpenAPI examples and the generated
+  capability document were all still naming v0.2.0; they now agree.
+- **README §*Status* states that this is a work in progress, name included.** *JSON Query
+  Language* is a working title, and every identifier downstream of it — both package names, the
+  `$id`, the URLs in the integration examples — is a placeholder, several of which do not
+  resolve. Getting them right is deliberately deferred until the name is settled, because a
+  rename moves all of them at once. A notice at the top of the README says the same thing before
+  a reader reaches an install command that will not work.
+- **`QUERY` now cites [RFC 10008](https://www.rfc-editor.org/rfc/rfc10008)** rather than
+  `draft-ietf-httpbis-safe-method-w-body`. The method reached Proposed Standard in June 2026.
+  The advice to ship `POST /search` alongside it is unchanged, but the reason is now that
+  deployed support trails a fresh RFC, not that the specification is unsettled.
 
 ## [0.2.0] — 2026-08-06
 

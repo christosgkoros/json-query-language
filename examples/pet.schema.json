@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.example.com/schemas/pet.json",
+  "title": "Pet",
+  "description": "A pet listed in the store.",
+  "type": "object",
+  "required": ["id", "name", "status"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Stable identifier."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "description": "Display name."
+    },
+    "species": {
+      "type": "string",
+      "enum": ["cat", "dog", "rabbit", "bird"],
+      "description": "Taxon, coarse-grained."
+    },
+    "status": {
+      "type": "string",
+      "description": "Listing state.",
+      "oneOf": [
+        { "const": "available", "description": "Adoptable now." },
+        { "const": "pending", "description": "An application is in review." },
+        { "const": "sold", "description": "Adopted; kept for history." }
+      ]
+    },
+    "born": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of birth, RFC 3339 full-date."
+    },
+    "weightKg": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 200,
+      "description": "Last recorded weight."
+    },
+    "neutered": {
+      "type": "boolean",
+      "description": "Whether the pet has been neutered."
+    },
+    "microchip": {
+      "type": ["string", "null"],
+      "description": "Chip number, null if unchipped."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Free-form labels used for browsing.",
+      "items": { "type": "string" }
+    },
+    "shelter": {
+      "type": "object",
+      "description": "Where the pet is housed.",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "description": "Shelter name." },
+        "city": { "type": "string", "description": "Shelter city." },
+        "capacity": { "type": "integer", "minimum": 0, "description": "Total kennels." }
+      }
+    },
+    "vaccinations": {
+      "type": "array",
+      "description": "Vaccination history.",
+      "items": {
+        "type": "object",
+        "required": ["vaccine", "administeredAt"],
+        "properties": {
+          "vaccine": { "type": "string", "enum": ["rabies", "distemper", "parvo"], "description": "Vaccine given." },
+          "administeredAt": { "type": "string", "format": "date-time", "description": "When it was given." },
+          "boosterDue": { "type": "string", "format": "date", "description": "When the booster is due." }
+        }
+      }
+    },
+    "internalNotes": {
+      "type": "string",
+      "description": "Staff-only. Not exposed to search.",
+      "x-jql": false
+    }
+  }
+}
