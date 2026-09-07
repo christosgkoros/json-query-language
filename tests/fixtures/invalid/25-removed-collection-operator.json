@@ -1,0 +1,11 @@
+{
+  "description": "$hasAny was removed in v0.4.0 — it is $some over $in",
+  "query": {
+    "tags": {
+      "$hasAny": [
+        "a"
+      ]
+    }
+  },
+  "expectKeyword": "additionalProperties"
+}

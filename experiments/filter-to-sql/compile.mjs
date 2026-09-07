@@ -82,7 +82,7 @@ const ptrJoin = (pointer, token) =>
 // ---------------------------------------------------------------------------
 
 /**
- * Parses a field path into segments: {key}, {index} or {wildcard}. The escape
+ * Parses a field path into segments: {key} or {index}. The escape
  * rules are the reason this exists at all — `a\.b` is one key, `$$price`
  * addresses the field `$price`, and neither survives a naive `split(".")`.
  */
@@ -126,8 +126,11 @@ export function parsePath(raw, pointer) {
       const close = raw.indexOf("]", i);
       if (close < 0) throw bad(`unterminated index in "${raw}"`);
       const body = raw.slice(i + 1, close);
-      if (body === "*") segments.push({ wildcard: true });
-      else if (/^\d+$/.test(body)) segments.push({ index: Number(body) });
+      if (body === "*") {
+        // Removed in v0.4.0: the quantifier belongs in an operator, not in a
+        // path shape. SPEC §3.2, decisions/0001.
+        throw bad(`"${raw}" uses the [*] wildcard, removed in v0.4.0 — quantify with $some or $every instead`);
+      } else if (/^\d+$/.test(body)) segments.push({ index: Number(body) });
       else throw bad(`invalid index "[${body}]" in "${raw}"`);
       i = close + 1;
     }
@@ -166,8 +169,6 @@ function sqliteJsonPath(segments) {
       path += SQLITE_BARE_KEY.test(s.key) ? `.${s.key}` : `."${s.key.replace(/"/g, '\\"')}"`;
     } else if (s.index !== undefined) {
       path += `[${s.index}]`;
-    } else {
-      throw new Error("internal: wildcard segments must be split before path building");
     }
   }
   return path;
@@ -451,21 +452,21 @@ function columnAccessor(ctx, spec, label) {
 // ---------------------------------------------------------------------------
 
 /**
- * Resolves a field path against the binding. Returns either a plain accessor
- * or, for a wildcard path, a builder that wraps a predicate in the existential
- * form SPEC §5.9 requires.
+ * Resolves a field path against the binding, or against the current element
+ * when we are inside a $some/$every (SPEC §3.4). A path now addresses exactly
+ * one position, so this always yields a plain accessor.
  */
 function resolveField(ctx, scope, rawPath, pointer) {
   const segments = parsePath(rawPath, pointer);
 
   if (scope.kind === "element") {
-    return buildFromSegments(ctx, scope.node, segments, rawPath);
+    return { acc: docAccessor(ctx, scope.node, segments, rawPath) };
   }
 
   const fields = ctx.binding.fields;
   const keys = [];
   for (const s of segments) {
-    if (s.key === undefined) break; // an index or wildcard ends the bindable prefix
+    if (s.key === undefined) break; // an index ends the bindable prefix
     keys.push(s.key);
   }
 
@@ -481,9 +482,9 @@ function resolveField(ctx, scope, rawPath, pointer) {
     if (!spec) continue;
 
     const rest = segments.slice(take);
-    // An index or a wildcard addresses the elements of a bound path, not a
-    // member beneath it: `tags[*]` is still the `tags` field. Only a named key
-    // needs the subtree to be exposed.
+    // An index addresses an element of a bound path, not a member beneath it:
+    // `tags[0]` is still the `tags` field (SPEC §3.5). Only a named key needs
+    // the subtree to be exposed.
     const descends = rest.some((s) => s.key !== undefined);
     if (spec.column) {
       if (rest.length) {
@@ -494,7 +495,7 @@ function resolveField(ctx, scope, rawPath, pointer) {
           { queryableFields: Object.keys(fields) },
         );
       }
-      return { wildcard: false, acc: columnAccessor(ctx, spec, name) };
+      return { acc: columnAccessor(ctx, spec, name) };
     }
     if (descends && !spec.subtree) {
       throw new QueryProblem(
@@ -507,7 +508,8 @@ function resolveField(ctx, scope, rawPath, pointer) {
     const root = { sql: spec.doc, typeSql: null, guard: null };
     const prefix = parsePath(name, pointer);
     // A declared type describes the bound path itself, not what lies under it.
-    return buildFromSegments(ctx, root, [...prefix, ...rest], rawPath, rest.length ? undefined : spec);
+    const segs = [...prefix, ...rest];
+    return { acc: docAccessor(ctx, root, segs, rawPath, rest.length ? undefined : spec) };
   }
 
   throw new QueryProblem(
@@ -516,50 +518,6 @@ function resolveField(ctx, scope, rawPath, pointer) {
     pointer,
     { queryableFields: Object.keys(fields) },
   );
-}
-
-/**
- * Splits a path at its wildcards. Without one, the result is a plain accessor.
- * With one, each `[*]` becomes a table-valued join inside a correlated
- * subquery, and the constraint is evaluated against the element.
- */
-function buildFromSegments(ctx, root, segments, label, spec) {
-  const chunks = [[]];
-  for (const s of segments) {
-    if (s.wildcard) chunks.push([]);
-    else chunks[chunks.length - 1].push(s);
-  }
-  if (chunks.length === 1) {
-    return { wildcard: false, acc: docAccessor(ctx, root, segments, label, spec) };
-  }
-
-  // A wildcard path is existential: TRUE if the constraint holds for some
-  // resolved value, FALSE if it holds for none, UNKNOWN if nothing resolved.
-  // Three outcomes means two subqueries — one to ask whether anything resolved
-  // at all, one to ask whether the constraint held.
-  const build = (predicate) => {
-    const shape = () => {
-      const from = [];
-      const guards = [];
-      let node = root;
-      for (let c = 0; c < chunks.length - 1; c += 1) {
-        const arrayAcc = docAccessor(ctx, node, chunks[c], label);
-        const alias = ctx.alias();
-        guards.push(arrayAcc.isClass("array"));
-        from.push(arrayAcc.each(alias));
-        node = ctx.dialect.element(alias);
-      }
-      const tail = docAccessor(ctx, node, chunks[chunks.length - 1], label);
-      return { from: from.join(", "), guards, tail };
-    };
-
-    const resolved = shape();
-    const resolvedSql = `EXISTS (SELECT 1 FROM ${resolved.from} WHERE ${[...resolved.guards, resolved.tail.exists()].join(" AND ")})`;
-    const held = shape();
-    const heldSql = `EXISTS (SELECT 1 FROM ${held.from} WHERE ${held.guards.join(" AND ")} AND (${predicate(held.tail)}))`;
-    return `CASE WHEN NOT ${resolvedSql} THEN NULL WHEN ${heldSql} THEN TRUE ELSE FALSE END`;
-  };
-  return { wildcard: true, build, label };
 }
 
 // ---------------------------------------------------------------------------
@@ -576,11 +534,6 @@ function readOperand(ctx, scope, operand, pointer) {
     if ("$field" in operand) {
       ctx.profileGate("$field", ptrJoin(pointer, "$field"));
       const resolved = resolveField(ctx, scope, operand.$field, ptrJoin(pointer, "$field"));
-      if (resolved.wildcard) {
-        // SPEC §5.11: a reference that resolves to more than one value is
-        // UNKNOWN. A wildcard reference always could, so it always is.
-        return { kind: "unknown" };
-      }
       return { kind: "field", acc: resolved.acc };
     }
   }
@@ -832,22 +785,12 @@ function arrayGuarded(ctx, acc, pointer, op, body) {
   return `CASE WHEN ${acc.isClass("array")} THEN ${body()} ELSE NULL END`;
 }
 
-function hasAny(ctx, scope, acc, list, pointer) {
-  return arrayGuarded(ctx, acc, pointer, "$hasAny", () => {
-    const alias = ctx.alias();
-    const from = acc.each(alias);
-    const element = docAccessor(ctx, ctx.dialect.element(alias), [], `${acc.label}[*]`);
-    const tests = list.map((v, i) => equality(ctx, scope, element, v, ptrJoin(pointer, i), "$hasAny"));
-    return `EXISTS (SELECT 1 FROM ${from} WHERE ${acc.isClass("array")} AND (${tests.join(" OR ")}))`;
-  });
-}
-
 function hasAll(ctx, scope, acc, list, pointer) {
   return arrayGuarded(ctx, acc, pointer, "$hasAll", () => {
     const each = list.map((v, i) => {
       const alias = ctx.alias();
       const from = acc.each(alias);
-      const element = docAccessor(ctx, ctx.dialect.element(alias), [], `${acc.label}[*]`);
+      const element = docAccessor(ctx, ctx.dialect.element(alias), [], `${acc.label} element`);
       const test = equality(ctx, scope, element, v, ptrJoin(pointer, i), "$hasAll");
       return `EXISTS (SELECT 1 FROM ${from} WHERE ${acc.isClass("array")} AND (${test}))`;
     });
@@ -867,32 +810,58 @@ function size(ctx, acc, constraint, pointer) {
 }
 
 /**
- * `$elemMatch`'s operand is `anyOf: [Filter, ConstraintObject]`, and the two
- * overlap on `$not`. Nothing in the document says which one is meant, so a
- * compiler has to guess: anything that can only be a Filter makes it a Filter.
+ * `$some`/`$every`'s operand is `anyOf: [Filter, ConstraintObject]`, and the two
+ * overlap on a leading `$not`. SPEC §5.8 makes the rule normative: scan for the
+ * first member that can only be one of the two, recursing through the bodies of
+ * $not/$and/$or/$nor when the outer member is itself ambiguous.
  */
-function elemMatchIsFilter(operand) {
+function quantifierTakesFilter(operand) {
   const keys = Object.keys(operand);
-  if (keys.some((k) => ["$and", "$or", "$nor"].includes(k))) return true;
-  return keys.some((k) => !k.startsWith("$") || k.startsWith("$$"));
+  for (const k of keys) {
+    if (!k.startsWith("$") || k.startsWith("$$")) return true;      // a field path
+    if (["$and", "$or", "$nor"].includes(k)) return true;           // Filter-only
+    if (k === "$not") {
+      // Ambiguous on its own: whichever the body is, the wrapper is too.
+      const body = operand[k];
+      if (body && typeof body === "object" && !Array.isArray(body)) {
+        if (quantifierTakesFilter(body)) return true;
+      }
+      continue;
+    }
+    return false;                                                    // an operator
+  }
+  return false;
 }
 
-function elemMatch(ctx, acc, operand, pointer, level) {
-  return arrayGuarded(ctx, acc, pointer, "$elemMatch", () => {
+/**
+ * The element quantifiers. Both walk the array once; the difference is only
+ * which rows they look for. An element whose condition is UNKNOWN does not
+ * satisfy it (SPEC §5.8), which is why `$every` tests `coalesce(inner, FALSE)`
+ * rather than `NOT inner` — the latter would let an UNKNOWN element pass.
+ *
+ * The empty-array answers fall out for free: EXISTS over no rows is FALSE, and
+ * NOT EXISTS over no rows is TRUE.
+ */
+function quantifier(ctx, acc, operand, pointer, level, op) {
+  return arrayGuarded(ctx, acc, pointer, op, () => {
     const alias = ctx.alias();
     const from = acc.each(alias);
     const node = ctx.dialect.element(alias);
-    const inner = elemMatchIsFilter(operand)
+    const inner = quantifierTakesFilter(operand)
       ? filterToSql(ctx, operand, { kind: "element", node }, pointer, level + 1)
       : constraintObjectToSql(
           ctx,
           { kind: "element", node },
-          docAccessor(ctx, node, [], `${acc.label}[*]`),
+          docAccessor(ctx, node, [], `${acc.label} element`),
           operand,
           pointer,
           level + 1,
         );
-    return `EXISTS (SELECT 1 FROM ${from} WHERE ${acc.isClass("array")} AND (${inner}))`;
+    const guard = acc.isClass("array");
+    if (op === "$some") {
+      return `EXISTS (SELECT 1 FROM ${from} WHERE ${guard} AND (${inner}))`;
+    }
+    return `NOT EXISTS (SELECT 1 FROM ${from} WHERE ${guard} AND coalesce(${inner}, FALSE) = FALSE)`;
   });
 }
 
@@ -905,7 +874,8 @@ function constraintObjectToSql(ctx, scope, acc, constraint, pointer, level) {
   const keys = Object.keys(constraint);
 
   for (const op of keys) {
-    if (op === "$flags") continue; // consumed with $regex
+    if (op === "$flags") continue;     // consumed with $regex
+    if (op === "$unknownAs") continue; // applied to the conjunction, below
     const ptr = ptrJoin(pointer, op);
     const operand = constraint[op];
     ctx.clause(ptr);
@@ -931,11 +901,12 @@ function constraintObjectToSql(ctx, scope, acc, constraint, pointer, level) {
       case "$exists": terms.push(exists(ctx, acc, operand, ptr)); break;
       case "$isNull": terms.push(isNull(ctx, acc, operand, ptr)); break;
       case "$type": terms.push(typeTest(ctx, acc, operand, ptr)); break;
-      case "$hasAny": terms.push(hasAny(ctx, scope, acc, operand, ptr)); break;
       case "$hasAll": terms.push(hasAll(ctx, scope, acc, operand, ptr)); break;
-      case "$hasNone": terms.push(`NOT (${hasAny(ctx, scope, acc, operand, ptr)})`); break;
       case "$size": terms.push(size(ctx, acc, operand, ptr)); break;
-      case "$elemMatch": terms.push(elemMatch(ctx, acc, operand, ptr, level)); break;
+      case "$some": case "$every":
+        ctx.depth(level + 1, ptr);
+        terms.push(quantifier(ctx, acc, operand, ptr, level, op));
+        break;
       case "$search":
         throw new QueryProblem(
           "unsupported-operator",
@@ -950,7 +921,18 @@ function constraintObjectToSql(ctx, scope, acc, constraint, pointer, level) {
         throw new QueryProblem("malformed-query", `"${op}" is not an operator of this language`, ptr);
     }
   }
-  return terms.length === 1 ? terms[0] : `(${terms.join(" AND ")})`;
+  const conjunction = terms.length === 1 ? terms[0] : `(${terms.join(" AND ")})`;
+
+  // SPEC §4.6: $unknownAs applies last, to the conjunction of its siblings and
+  // after a field-level $not. Resolution distributes over three-valued AND, so
+  // wrapping once here is equivalent to wrapping each term — but it is *not*
+  // equivalent to wrapping inside a NOT, which is why it goes outside.
+  if ("$unknownAs" in constraint) {
+    ctx.profileGate("$unknownAs", ptrJoin(pointer, "$unknownAs"));
+    const fallback = constraint.$unknownAs ? "TRUE" : "FALSE";
+    return `coalesce(${conjunction}, ${fallback})`;
+  }
+  return conjunction;
 }
 
 function constraintToSql(ctx, scope, rawPath, constraint, pointer, level) {
@@ -958,12 +940,7 @@ function constraintToSql(ctx, scope, rawPath, constraint, pointer, level) {
   const shorthand = constraint === null || typeof constraint !== "object";
   const asObject = shorthand ? { $eq: constraint } : constraint;
 
-  if (!resolved.wildcard) {
-    return constraintObjectToSql(ctx, scope, resolved.acc, asObject, pointer, level);
-  }
-  return resolved.build((elementAcc) =>
-    constraintObjectToSql(ctx, scope, elementAcc, asObject, pointer, level),
-  );
+  return constraintObjectToSql(ctx, scope, resolved.acc, asObject, pointer, level);
 }
 
 function filterToSql(ctx, filter, scope, pointer, level) {

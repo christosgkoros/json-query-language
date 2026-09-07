@@ -1,0 +1,21 @@
+{
+  "description": "$every quantifies universally, over objects and over scalars",
+  "query": {
+    "$and": [
+      {
+        "items": {
+          "$every": {
+            "status": "settled"
+          }
+        }
+      },
+      {
+        "scores": {
+          "$every": {
+            "$gte": 0
+          }
+        }
+      }
+    ]
+  }
+}

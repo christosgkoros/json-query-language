@@ -1,0 +1,10 @@
+{
+  "description": "$some over an array of scalars takes a constraint object",
+  "query": {
+    "tags": {
+      "$some": {
+        "$like": "p%"
+      }
+    }
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "description": "dotted, indexed and wildcard field paths",
+  "description": "dotted and indexed field paths",
   "query": {
     "$and": [
       {
@@ -8,11 +8,6 @@
       {
         "items[0].sku": {
           "$startsWith": "A"
-        }
-      },
-      {
-        "items[*].qty": {
-          "$gt": 0
         }
       }
     ]

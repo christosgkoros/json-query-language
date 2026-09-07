@@ -1,0 +1,9 @@
+{
+  "description": "$unknownAs is a modifier and needs an operator to modify",
+  "query": {
+    "status": {
+      "$unknownAs": true
+    }
+  },
+  "expectKeyword": "minProperties"
+}

@@ -1,0 +1,31 @@
+{
+  "description": "$unknownAs resolves UNKNOWN for a constraint, inside and outside a field-level $not",
+  "query": {
+    "$and": [
+      {
+        "status": {
+          "$ne": "archived",
+          "$unknownAs": true
+        }
+      },
+      {
+        "age": {
+          "$not": {
+            "$gt": 5
+          },
+          "$unknownAs": false
+        }
+      },
+      {
+        "tags": {
+          "$some": {
+            "$in": [
+              "a"
+            ]
+          },
+          "$unknownAs": false
+        }
+      }
+    ]
+  }
+}

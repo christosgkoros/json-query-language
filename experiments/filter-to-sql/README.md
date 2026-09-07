@@ -14,8 +14,11 @@ clauses cost more than they look like they should, and which parts of the
 specification turned out to be unimplementable as written.
 
 The short answer, up front: **substantially simpler, with five localised costs
-and six places where the specification does not say enough to implement it
-without guessing.** Both halves are detailed below.
+and six places where the specification did not say enough to implement it
+without guessing.** Both halves are detailed below. Five of those six gaps were
+closed by v0.4.0, which this exercise is part of the evidence for — see
+[`decisions/0001`](../../decisions/0001-array-quantifiers-and-unknown-handling.md);
+the numbers and findings here are measured against v0.4.0.
 
 ---
 
@@ -25,13 +28,13 @@ without guessing.** Both halves are detailed below.
 | --- | --- |
 | `compile.mjs` | the compiler: filter + binding → `{ sql, params, warnings }`, dialects `sqlite` and `postgres` |
 | `dataset.mjs` | 10 fixture records, and the two bindings the corpus is compiled under |
-| `cases.mjs` | 65 use cases, each with the row set SPEC.md says it should return |
+| `cases.mjs` | 72 use cases, each with the row set SPEC.md says it should return |
 | `harness.mjs` | an in-memory SQLite database, plus the ajv validation a server does first |
-| `compile.test.mjs` | the corpus, executed: 136 assertions |
+| `compile.test.mjs` | the corpus, executed: 150 assertions |
 | `run.mjs` | command line — compile a filter, print the SQL, run the corpus, print the measurements |
 
 ```bash
-npm run test:experiment                # the corpus, executed: 136 assertions
+npm run test:experiment                # the corpus, executed: 150 assertions
 npm run experiment -- --corpus         # every case, both bindings, side by side
 npm run experiment -- --metrics        # the numbers quoted below
 npm run experiment -- --sql b02        # one case, both bindings, both dialects
@@ -110,7 +113,7 @@ Treat every Postgres claim below as reasoned, not tested.
 
 ```
 130/130 case-binding pairs match the hand-derived expectation.
-136 assertions pass (65 cases × 2 bindings + 6 structural tests).
+150 assertions pass (65 cases × 2 bindings + 6 structural tests).
 ```
 
 | | |
@@ -118,55 +121,60 @@ Treat every Postgres claim below as reasoned, not tested.
 | Operator names in `x-profiles` | 34 |
 | Compiled | 33 — every one except `$search` |
 | Faithful on both dialects | 31 — `$regex`/`$flags` are faithful on SQLite only |
-| Cases that compile | 56 of 65 |
+| Cases that compile | 63 of 72 |
 | Cases rejected at compile time, with the right §8 problem type | 8, plus `c09` in the column binding only |
 | Cases whose answer is legitimately binding-dependent | 1 (`c10`) |
 
 ## Where the cost went
 
-`compile.mjs` is 1026 lines, 769 of them code. By section:
+`compile.mjs` is 1003 lines, 743 of them code, against v0.4.0 of the grammar.
+By section:
 
 | Section | Code lines | What it does |
 | --- | --- | --- |
-| Operators | 209 | one function per operator family |
-| Dialects | 106 | the SQLite and Postgres primitives |
-| Constraints and filters | 88 | the dispatch: 34 `case` labels and the AND/OR/NOT plumbing |
-| Field resolution | 85 | path → binding → accessor, including wildcard expansion |
+| Operators | 215 | one function per operator family |
+| Dialects | 104 | the SQLite and Postgres primitives |
+| Constraints and filters | 91 | the dispatch: 33 `case` labels, the AND/OR/NOT plumbing and `$unknownAs` |
 | Compilation context | 64 | parameter interning, §7 limits, §2.1 profile gating |
-| Field paths | 59 | the §3.2 path grammar |
+| Field paths | 60 | the §3.2 path grammar |
+| Field resolution | 54 | path → binding → accessor |
 | Accessors | 48 | the interface that hides "column or JSON" from the operators |
-| Operands | 27 | `$field` / `$literal` |
+| Operands | 24 | `$field` / `$literal` |
 | Comparison shapes | 23 | **all of the three-valued logic** |
 | Entry points | 20 | |
 
-And the emitted SQL, over the 56 filters that compile under both bindings:
+And the emitted SQL, over the 63 filters that compile under both bindings
+(101 clauses):
 
 | | promoted columns | JSON column |
 | --- | --- | --- |
-| Characters of `WHERE` per clause | 124 | 154 |
-| Filters needing at least one `CASE` guard | 39 of 56 | 50 of 56 |
-| `CASE` guards emitted in total | 76 | 95 |
-| Filters needing no guard at all | 17 | 6 |
-| Largest single filter | | 1135 chars (`b02`, two wildcard clauses) |
+| Characters of `WHERE` per clause | 98 | 122 |
+| Filters needing at least one `CASE` guard | 44 of 63 | 57 of 63 |
+| `CASE` guards emitted in total | 82 | 103 |
+| Filters needing no guard at all | 19 | 6 |
+| Largest single filter | | 799 chars (`b02`, two `$some` clauses) |
 | Smallest | 10 chars (`born >= ?1`) | 27 chars (`json_type(doc, ?1) = 'null'`) |
 
 Two numbers are worth staring at.
 
-**Three-valued logic cost 23 lines.** The part of the specification that reads
-as the most intimidating — a truth table, UNKNOWN propagation, the `$not`
-surprise, `$ne` over nulls — is the cheapest part of the compiler, because
-`AND`, `OR` and `NOT` in SQL already are that truth table. `$nor` is
-`NOT (a OR b)`. `$ne` is `NOT (eq)`. `$nin` is `NOT (in)`. `$hasNone` is
-`NOT (hasAny)`. Nothing needed rewriting into a positive normal form, and there
-is no separate UNKNOWN value to thread anywhere: it is SQL NULL.
+**Three-valued logic cost 23 lines**, and did not move when v0.4.0 rewrote the
+array constructs around it. The part of the specification that reads as the most
+intimidating — a truth table, UNKNOWN propagation, the `$not` surprise, `$ne`
+over nulls — is the cheapest part of the compiler, because `AND`, `OR` and `NOT`
+in SQL already are that truth table. `$nor` is `NOT (a OR b)`. `$ne` is
+`NOT (eq)`. `$nin` is `NOT (in)`. `$unknownAs` is `coalesce`. Nothing needed
+rewriting into a positive normal form, and there is no separate UNKNOWN value to
+thread anywhere: it is SQL NULL.
 
-**The field path grammar cost 59 lines — two and a half times more.** The
+**The field path grammar cost 60 lines — two and a half times more.** The
 feature that looks free in the specification (`a.b.c`, and by the way `\.` and
-`$$` and `[0]` and `[*]`) needs a real character-level parser before anything
-can be compiled, because `split(".")` is wrong for `a\.b` and `"$eqq"` has to
-be distinguished from a field named `$eqq`. It is the one place in this
-exercise where the specification's cost estimate and the implementation's are
-inverted.
+`$$` and `[0]`) needs a real character-level parser before anything can be
+compiled, because `split(".")` is wrong for `a\.b` and `"$eqq"` has to be
+distinguished from a field named `$eqq`. It is the one place in this exercise
+where the specification's cost estimate and the implementation's are inverted.
+Dropping the `[*]` segment did **not** reduce it: `[0]` shares the same
+production, so the parser stays and only the existential builder went — which is
+visible in *Field resolution*, down from 85 lines to 54.
 
 ## What the design made easier
 
@@ -197,14 +205,27 @@ paid for themselves repeatedly:
 - **`$in` is not overloaded for arrays** (§5.4). In MongoDB, `{"tags": {"$in": ["a"]}}`
   means one thing if `tags` is an array and another if it is a scalar, so a
   compiler either inspects the data it cannot see or emits both branches. Here
-  it is one branch, always. The cost of the split is a documented trap for
-  users; the benefit is that the compiler is total.
+  it is one branch, always. The cost of the split was a documented trap for
+  users, which v0.4.0 addressed from the other side: element access is now
+  spelled `{"tags": {"$some": {"$in": ["a"]}}}`, so the quantifier is visible in
+  the filter rather than fused into an operator name. The compiler is still
+  total, and `$some` is still one branch.
 - **Arrays and objects are excluded from the scalar shorthand** (§5.1), so
   `{"tags": ["a"]}` never has to be disambiguated.
-- **`$elemMatch` and `[*]` are different operators** (§5.9). `b01` and `b02`
-  are the same two conditions written both ways, and they return different row
-  sets (`p08 p09` versus `p04 p08 p09`). A language with only one of the two
-  would have to pick, and would be wrong half the time.
+- **Quantifier scope is explicit, and both scopes are reachable** (§5.9). `b01`
+  and `b02` are the same two conditions under different scopes and they return
+  different row sets (`p08 p09` versus `p04 p08 p09`): one `$some` carrying both
+  conditions needs a single element to satisfy both, while two `$some` clauses
+  each pick their own element.
+
+  **A correction.** Before v0.4.0 this bullet read: "`$elemMatch` and `[*]` are
+  different operators… a language with only one of the two would have to pick,
+  and would be wrong half the time." The premise was right and the conclusion
+  did not follow. A language with only the quantifier picks nothing — it writes
+  one `$some` for the first reading and two for the second, which is exactly
+  what `b02` now does, and `b02` returns the same rows the wildcard spelling
+  returned. The wildcard was redundant, not expressive, and this corpus is what
+  demonstrates it.
 
 **4. Profiles and limits are machine-readable.** The compiler reads
 `x-profiles` out of the grammar rather than restating it, so operator gating is
@@ -257,24 +278,31 @@ conformant, because §4.2 only requires the endpoint to *document* which state
 it reports. It is the only case in the corpus whose correct answer depends on
 where the data is stored.
 
-**3. Wildcard paths are the most expensive construct in the language.** SPEC
-§5.9's existential rule has three outcomes — TRUE if the constraint holds for
-some resolved value, FALSE if for none, UNKNOWN if nothing resolved — which
-means two correlated subqueries (one asking whether anything resolved, one
-asking whether the constraint held) wrapped in a three-branch `CASE`, per
-clause, plus one table-valued join per `[*]`. `b02`, a two-clause filter, is
-1135 characters of `WHERE`; the equivalent `$elemMatch` in `b01` is 652.
-Nothing is wrong with the semantics — they are the only sane reading — but a
-server that advertises `collections` on a large table is advertising a
-join-per-clause, and the specification's §7 advice about restricting expensive
-operators to indexed fields understates the problem: this is not an expensive
-*field*, it is an expensive *path shape*.
+**3. Array traversal is the most expensive construct in the language — and it
+used to be worse.** Each `$some` or `$every` is a table-valued join inside a
+correlated subquery, so a server that advertises `collections` on a large table
+is advertising a join per quantifier. The §7 advice about restricting expensive
+operators to indexed fields is the right advice, and unlike the construct this
+replaced, a server that cannot afford it can decline the whole profile.
 
-There is also a spec-level oddity that only shows up here. `b09` and `b10` ask
-`$exists: true` and `$exists: false` on the same wildcard path; the three
-records with no vaccinations at all appear in *neither*, because §5.9 makes any
-wildcard constraint UNKNOWN when the path resolves to nothing — which costs
-`$exists` the totality §4.2 grants it everywhere else.
+This finding used to read differently, and the difference is the point.
+Against v0.3.x, wildcard paths were measurably worse than `$elemMatch` for the
+same intent: §5.9's existential rule had three outcomes — TRUE if the constraint
+held for some resolved value, FALSE if for none, UNKNOWN if nothing resolved —
+which meant *two* correlated subqueries wrapped in a three-branch `CASE`, per
+clause. `b02` was 1135 characters of `WHERE` against `b01`'s 652. Rewritten as
+two `$some` clauses it is **799**, it returns the same rows, and the whole
+three-branch shape is gone: a quantifier has two outcomes over any array, so an
+`EXISTS` (or a `NOT EXISTS` for `$every`) is the entire construct. Per-clause
+`WHERE` size across the corpus fell from 124 to 98 characters on the hybrid
+binding and 154 to 122 on the document binding.
+
+The spec-level oddity that used to live here is also gone. `b09` and `b10` ask
+`$exists: true` and `$exists: false` inside the same quantifier, and the three
+records with no vaccinations at all are still in *neither* — but now because
+their arrays are empty and no element satisfies either condition, which is one
+stated rule rather than an unstated collision between §4.2 and §5.9. `$exists`
+keeps its totality everywhere.
 
 **4. `$regex` is specified in a dialect no SQL engine implements.** §5.7 says
 ECMA-262. SQLite has no built-in `REGEXP` implementation, so the harness
@@ -306,40 +334,35 @@ fail at operator × operand-shape granularity.
 
 Six places where the compiler had to choose, and the choice is observable:
 
-1. **§4.3 versus §5.1 — is a type-mismatched `$eq` FALSE or UNKNOWN?** §4.3
-   says comparing different types yields UNKNOWN; §5.1 defines `$eq` as
-   structural equality, under which a string and a number are simply unequal.
-   The two readings are indistinguishable under `$eq` and differ under `$ne`:
-   with FALSE, `{"notes": {"$ne": 3}}` returns the string-valued records; with
-   UNKNOWN it does not. This compiler chose structural equality (FALSE),
-   because §5.2 restates the UNKNOWN rule for ordering specifically, which
-   suggests §4.3 was written about ordering and coercion. It should be stated
-   outright — it is a one-sentence fix and it changes result sets.
-2. **`$elemMatch`'s operand shape is ambiguous.** The schema says
-   `anyOf: [Filter, ConstraintObject]`, and the two overlap: `{"$not": …}` is
-   valid as either, with different meanings for what is inside. The compiler
-   guesses — anything that can only be a `Filter` (a field key, `$and`, `$or`,
-   `$nor`) makes it a `Filter`, otherwise a constraint object. Two
-   implementations could reasonably guess differently.
-3. **What does `$field` resolve against inside `$elemMatch`?** §5.11 says "the
-   same record"; §5.8 says paths inside `$elemMatch` are relative to the
-   element. `{"items": {"$elemMatch": {"qty": {"$gt": {"$field": "limit"}}}}}`
-   has two defensible readings. This compiler resolves it against the element,
-   for consistency with the surrounding paths.
-4. **Is `[*]` on a bound path the same field, for authorization purposes?**
-   §3.5 requires rejecting a path the endpoint does not expose. If `tags` is
-   exposed, is `tags[*]` exposed? (This compiler says yes for index and
-   wildcard suffixes, no for named members unless the subtree is exposed — it
-   was a bug the first time round, which is the sort of thing the spec could
-   pre-empt in one clause.)
+1. ~~**§4.3 versus §5.1 — is a type-mismatched `$eq` FALSE or UNKNOWN?**~~
+   **Resolved in v0.4.0: FALSE for the equality family, UNKNOWN for ordering,
+   string and array operators**, with a table in §4.3. This compiler had already
+   chosen structural equality, on the reasoning that §5.2 restates the UNKNOWN
+   rule for ordering specifically; the specification now says so outright.
+2. ~~**`$elemMatch`'s operand shape is ambiguous.**~~ **Resolved in v0.4.0.**
+   `$some`/`$every` keep the `anyOf: [Filter, ConstraintObject]` shape, but §5.8
+   now gives the disambiguation rule normatively — scan for the first member
+   that can only be one of the two, recursing through `$not`/`$and`/`$or`/`$nor`
+   bodies — which is the rule this compiler had invented.
+3. ~~**What does `$field` resolve against inside `$elemMatch`?**~~ **Resolved in
+   v0.4.0: the element**, stated in both §5.8 and §5.11, which is what this
+   compiler already did.
+4. ~~**Is `[*]` on a bound path the same field, for authorization purposes?**~~
+   **Moot in v0.4.0** — there is no `[*]`. §3.5 now also settles the surviving
+   half: an index suffix is the same field (`items[0]` is `items`), a named
+   member beneath it is its own path.
 5. **`$size`'s nested constraint is a fourth constraint dialect.** It is
    neither a `Filter` nor a `ConstraintObject` nor a scalar, but its own
    integer-only object in the schema. Nothing is wrong with it; it just means
-   the compiler has one more shape to special-case for one operator.
-6. **Nothing says whether `$exists` survives a wildcard path** — see the
-   `b09`/`b10` pair above.
+   the compiler has one more shape to special-case for one operator. **Still
+   open** — deliberately out of scope for v0.4.0, which was scoped to the three
+   flagged overlaps.
+6. ~~**Nothing says whether `$exists` survives a wildcard path.**~~ **Moot in
+   v0.4.0.**
 
-None of these are structural problems. All six are sentences.
+None of these were structural problems. All six were sentences, and five of them
+have now been written — see
+[`decisions/0001`](../../decisions/0001-array-quantifiers-and-unknown-handling.md).
 
 ## Verdict
 
@@ -355,9 +378,9 @@ UNKNOWN, is 23 lines of it.
 
 The costs are real but they are localised, and every one of them is a place
 where the specification chose fidelity over convenience: no coercion, missing
-distinct from null, existential wildcards with three outcomes, ECMA-262
+distinct from null, explicit quantification over array elements, ECMA-262
 regular expressions. What is interesting is that they do not all fall on the
-same side. Missing-distinct-from-null and wildcard paths are cheap on a
+same side. Missing-distinct-from-null and array traversal are cheap on a
 JSON-native store and impossible on a table of typed columns; no-coercion is
 exactly the other way round — free where a column declares its type, and the
 dominant cost in the emitted SQL where the value could be anything. Only the
@@ -391,7 +414,7 @@ silently matches nothing — is already in the repository as
 - **No performance or index analysis.** Character counts are a proxy for
   complexity, not for cost. Whether these predicates are *plannable* — whether
   `LIKE 'A%'` on a JSON path uses an expression index, what a
-  join-per-wildcard-clause does to a million rows — is a separate experiment,
+  join-per-quantifier does to a million rows — is a separate experiment,
   and the more important one for anyone deploying this.
 - **One resource shape, ten records.** The corpus covers the operators and the
   edges of the semantics, not the space of data models. Nothing here exercises

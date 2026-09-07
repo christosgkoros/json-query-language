@@ -61,11 +61,11 @@ test("field paths parse per SPEC §3.2", () => {
   assert.deepEqual(parsePath("name"), [{ key: "name" }]);
   assert.deepEqual(parsePath("address.city"), [{ key: "address" }, { key: "city" }]);
   assert.deepEqual(parsePath("items[0].sku"), [{ key: "items" }, { index: 0 }, { key: "sku" }]);
-  assert.deepEqual(parsePath("items[*].sku"), [{ key: "items" }, { wildcard: true }, { key: "sku" }]);
   assert.deepEqual(parsePath("a\\.b"), [{ key: "a.b" }]);
   assert.deepEqual(parsePath("$$price"), [{ key: "$price" }]);
   assert.deepEqual(parsePath("a[0][1]"), [{ key: "a" }, { index: 0 }, { index: 1 }]);
-  for (const bad of ["", "$price", "a.", "a\\b", "a[x]", "a[0", "a..b"]) {
+  // The [*] wildcard was removed in v0.4.0; $some and $every replace it.
+  for (const bad of ["", "$price", "a.", "a\\b", "a[x]", "a[0", "a..b", "items[*].sku", "tags[*]"]) {
     assert.throws(() => parsePath(bad, "/filter"), QueryProblem, `should reject "${bad}"`);
   }
 });
