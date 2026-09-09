@@ -52,7 +52,7 @@ const PROBLEM_TITLES = {
   "query-too-complex": "Query too complex",
 };
 
-/** An RFC 9457 problem in flight, per SPEC §8. */
+/** A SPEC §8 rejection in flight, carried in the RFC 9457 shape §8 recommends. */
 export class QueryProblem extends Error {
   constructor(type, detail, pointer, extra = {}) {
     super(detail);

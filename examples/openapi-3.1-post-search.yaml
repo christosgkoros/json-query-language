@@ -103,7 +103,9 @@ components:
           items:
             $ref: '#/components/schemas/Pet'
 
-    # RFC 9457 Problem Details. See SPEC.md §8 for the registered type URIs.
+    # SPEC.md §8 mandates the five error conditions, not a wire format; these
+    # documents use the RFC 9457 Problem Details shape it recommends as a default.
+    # See SPEC.md §8 for the type URIs.
     Problem:
       type: object
       required: [type, title, status]

@@ -124,6 +124,8 @@ components:
           items:
             $ref: '#/components/schemas/Pet'
 
+    # SPEC.md §8 mandates the five error conditions, not a wire format; these
+    # documents use the RFC 9457 Problem Details shape it recommends as a default.
     Problem:
       type: object
       required: [type, title, status]
