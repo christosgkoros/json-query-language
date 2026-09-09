@@ -440,6 +440,35 @@ function emitSizeDef(ctx) {
   return { $ref: "#/$defs/Size" };
 }
 
+/**
+ * Carries the published constraint object's dependency keywords over to a
+ * generated one, for the triggers whose operator survived: $flags needs $regex
+ * beside it, and $unknownAs needs something to modify.
+ *
+ * These rules are part of what the grammar rejects, so a generated schema that
+ * drops one is *wider* than the grammar there — which is the one thing a
+ * generated schema may never be (README §"Narrowing only"). Reading them off
+ * the grammar rather than restating them here means a rule added to
+ * $defs/ConstraintObject reaches generated schemas with the version that
+ * introduced it.
+ */
+function dependencyRules(ctx, props) {
+  const source = ctx.grammar.$defs.ConstraintObject;
+  // The rule is carried; the $comment justifying it is not. That prose is
+  // written for someone reading the grammar, and here it would be one copy per
+  // field, charged by the token to whoever inlines this in a tool definition.
+  const constraining = ({ $comment, ...rest }) => structuredClone(rest);
+  const rules = {};
+  for (const keyword of ["dependentSchemas", "dependentRequired"]) {
+    const kept = {};
+    for (const [trigger, rule] of Object.entries(source[keyword] ?? {})) {
+      if (trigger in props) kept[trigger] = Array.isArray(rule) ? [...rule] : constraining(rule);
+    }
+    if (Object.keys(kept).length > 0) rules[keyword] = kept;
+  }
+  return rules;
+}
+
 /** Builds the constraint-object subschema for one field, and registers it. */
 function emitConstraint(ctx, field, prefix) {
   const ops = operatorsFor(field, ctx);
@@ -521,10 +550,10 @@ function emitConstraint(ctx, field, prefix) {
     ...(field.schema.description ? { description: field.schema.description } : {}),
     type: "object",
     minProperties: 1,
+    ...dependencyRules(ctx, props),
     properties: props,
     additionalProperties: false,
   };
-  if (props.$flags) constraint.dependentRequired = { $flags: ["$regex"] };
 
   ctx.defs[name] = constraint;
   field.constraintDef = name;

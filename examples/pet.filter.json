@@ -304,6 +304,11 @@
       "description": "Taxon, coarse-grained.",
       "type": "object",
       "minProperties": 1,
+      "dependentSchemas": {
+        "$unknownAs": {
+          "minProperties": 2
+        }
+      },
       "properties": {
         "$eq": {
           "title": "$eq",
@@ -423,6 +428,11 @@
       "description": "Date of birth, RFC 3339 full-date.",
       "type": "object",
       "minProperties": 1,
+      "dependentSchemas": {
+        "$unknownAs": {
+          "minProperties": 2
+        }
+      },
       "properties": {
         "$eq": {
           "title": "$eq",
@@ -518,6 +528,11 @@
       "description": "Last recorded weight.",
       "type": "object",
       "minProperties": 1,
+      "dependentSchemas": {
+        "$unknownAs": {
+          "minProperties": 2
+        }
+      },
       "properties": {
         "$eq": {
           "title": "$eq",
@@ -608,6 +623,11 @@
       "description": "Whether the pet has been neutered.",
       "type": "object",
       "minProperties": 1,
+      "dependentSchemas": {
+        "$unknownAs": {
+          "minProperties": 2
+        }
+      },
       "properties": {
         "$eq": {
           "title": "$eq",
@@ -646,6 +666,11 @@
       "description": "Chip number, null if unchipped.",
       "type": "object",
       "minProperties": 1,
+      "dependentSchemas": {
+        "$unknownAs": {
+          "minProperties": 2
+        }
+      },
       "properties": {
         "$eq": {
           "title": "$eq",
@@ -869,6 +894,11 @@
       "description": "Free-form labels used for browsing.",
       "type": "object",
       "minProperties": 1,
+      "dependentSchemas": {
+        "$unknownAs": {
+          "minProperties": 2
+        }
+      },
       "properties": {
         "$eq": {
           "title": "$eq",
@@ -932,6 +962,11 @@
       "description": "Where the pet is housed.",
       "type": "object",
       "minProperties": 1,
+      "dependentSchemas": {
+        "$unknownAs": {
+          "minProperties": 2
+        }
+      },
       "properties": {
         "$exists": {
           "title": "$exists",
@@ -954,6 +989,11 @@
       "description": "Shelter name.",
       "type": "object",
       "minProperties": 1,
+      "dependentSchemas": {
+        "$unknownAs": {
+          "minProperties": 2
+        }
+      },
       "properties": {
         "$eq": {
           "title": "$eq",
@@ -1045,6 +1085,11 @@
       "description": "Shelter city.",
       "type": "object",
       "minProperties": 1,
+      "dependentSchemas": {
+        "$unknownAs": {
+          "minProperties": 2
+        }
+      },
       "properties": {
         "$eq": {
           "title": "$eq",
@@ -1140,6 +1185,11 @@
       "description": "Total kennels.",
       "type": "object",
       "minProperties": 1,
+      "dependentSchemas": {
+        "$unknownAs": {
+          "minProperties": 2
+        }
+      },
       "properties": {
         "$eq": {
           "title": "$eq",
@@ -1373,6 +1423,11 @@
       "description": "When the booster is due.",
       "type": "object",
       "minProperties": 1,
+      "dependentSchemas": {
+        "$unknownAs": {
+          "minProperties": 2
+        }
+      },
       "properties": {
         "$eq": {
           "title": "$eq",
@@ -1529,6 +1584,11 @@
       "description": "Vaccination history.",
       "type": "object",
       "minProperties": 1,
+      "dependentSchemas": {
+        "$unknownAs": {
+          "minProperties": 2
+        }
+      },
       "properties": {
         "$eq": {
           "title": "$eq",
