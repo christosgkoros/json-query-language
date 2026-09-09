@@ -1,25 +1,8 @@
 # JSON Query Language
 
-**A search interface for agents.** A JSON-encoded, SQL-flavoured predicate language, described completely by a single JSON Schema — small enough to hand to a model as a tool argument, precise enough that the model needs nothing else to use it.
+A JSON-encoded, SQL-flavoured **predicate language**, described by a single JSON Schema — `$ref` it from an OpenAPI document, or inline it into an MCP tool's `inputSchema`.
 
-Put the schema in an MCP tool's `inputSchema` and the search tool is finished:
-
-```jsonc
-{
-  "name": "search_pets",
-  "description": "Search the pet collection.",
-  "inputSchema": {
-    "type": "object",
-    "required": ["filter"],
-    "properties": {
-      "filter": { /* the query language, inlined: operators, paths, value domains */ },
-      "limit":  { "type": "integer", "minimum": 1, "maximum": 50, "default": 20 }
-    }
-  }
-}
-```
-
-The agent is not taught the language. It reads that argument's schema the way it reads every other argument's schema, and writes a filter:
+Write the filter grammar once. Use it for every `POST /…/search` and `QUERY /…` operation in your API, and for every search tool you expose to an agent. Clients learn one language instead of one ad-hoc query syntax per endpoint — and so do models.
 
 ```json
 {
@@ -34,15 +17,7 @@ The agent is not taught the language. It reads that argument's schema the way it
 }
 ```
 
-No prompt teaching the syntax, no few-shot examples, no steering. The operators, what each one means, which paths are queryable and what values each path accepts are all in the schema, and the schema is in the tool definition. What the model still gets wrong comes back as a rejection pointing at the offending clause — enough to repair and retry in one round trip, instead of an empty result set it will report as "none found".
-
-**A server you can run:** [`examples/mcp-server/`](./examples/mcp-server) — one tool, the language as its input schema, real queries against real records.
-
-```bash
-node examples/mcp-server/demo.mjs
-```
-
-The same schema `$ref`s from an OpenAPI document, so an API's search endpoints and the MCP tools wrapping them speak one language rather than two.
+One schema, two integration points, because JSON Schema is what both already speak: it is the interchange format of OpenAPI 3.1, and it is what an MCP `inputSchema` is.
 
 - **Schema** — [`query-language-schema.json`](./query-language-schema.json) (JSON Schema draft 2020-12)
 - **Semantics** — [`SPEC.md`](./SPEC.md) — nulls, paths, coercion, errors, limits
@@ -58,13 +33,9 @@ The same schema `$ref`s from an OpenAPI document, so an API's search endpoints a
 
 ## Why
 
-An agent that searches your data is only as good as the questions it can ask. Give it `list_pets(status, species)` and it can ask three questions; give it a full-text `q` string and it can ask one, badly. Give it a predicate language and it can ask what the user actually asked — provided it knows the language.
+Search endpoints attract bespoke query syntaxes. Each one arrives as an opaque string parameter (`?q=status:open AND born>2020`) that no schema can validate, no generator can type, and no client can build safely. Structuring the query as JSON changes that: it can be described by a JSON Schema, and a JSON Schema is the interchange format both of today's API description layers already speak. From OpenAPI it validates in CI, appears in generated docs, and produces real types in generated clients. As an MCP tool's `inputSchema` it becomes the contract an agent writes filters against, with the operator `description`s carried along as the instructions.
 
-That proviso is the whole problem, and JSON Schema solves it. A bespoke query string (`?q=status:open AND born>2020`) has to be taught: the tool description explains the syntax, the prompt carries examples, and the model assembles a string nothing can validate until it reaches your parser. A JSON-encoded predicate described by a schema is *already* in the tool definition — the operators, their semantics, the queryable paths, the accepted values, all as `description`s the model reads along with the argument. Nothing about the query language lives in your prompt, so nothing about it drifts when you change your prompt.
-
-The same property pays off away from agents. From OpenAPI the schema validates in CI, appears in generated docs, and produces real types in generated clients; one grammar covers every `POST /…/search` and `QUERY /…` in the API. Both audiences are served by the same file because both speak JSON Schema.
-
-Confining it to the *predicate* — no projection, ordering or pagination — is what makes it reusable. Those parts differ per API; the filter does not.
+Confining the schema to the *predicate* — no projection, ordering or pagination — is what makes it reusable. Those parts differ per API; the filter does not.
 
 ## The two rules worth learning first
 
@@ -188,97 +159,9 @@ A member name is a path into the record:
 
 A path addresses one position. To say something about an array's elements, quantify with `$some` or `$every` — and note that the nesting carries the scope: one `$some` with two conditions needs a *single* element to satisfy both, while two `$some` clauses may be satisfied by different elements. [SPEC.md §5.9](./SPEC.md#59-quantifier-scope).
 
-## Exposing search to an agent
-
-This is the case the language is shaped for, and there is a working server for it in [`examples/mcp-server/`](./examples/mcp-server) — one tool, real records, `node examples/mcp-server/demo.mjs` to watch it answer and reject.
-
-The integration is one property of one argument:
-
-```js
-inputSchema: {
-  type: "object",
-  properties: {
-    filter: FILTER_SCHEMA,      // the filter schema, inlined
-    limit:  { type: "integer", minimum: 1, maximum: 50, default: 20 },
-  },
-  required: ["filter"],
-}
-```
-
-An agent sees only the tool definition you hand it. It does not fetch this schema and it does not read [SPEC.md](./SPEC.md), so everything a correct filter requires has to be *in* that definition — which is exactly what inlining the grammar achieves. Each operator arrives carrying its own `description`, written for a reader who has never seen the language, and each field arrives carrying the values it accepts. Nothing about the query language needs to go in your system prompt, and so nothing about it drifts when your prompt changes.
-
-The language does the syntactic work for you. A malformed filter, an unknown field and an unsupported operator all come back as a `400` with a `pointer` at the offending clause ([SPEC.md §8](./SPEC.md#8-errors)) — enough for an agent to repair its own request in one round trip. What the language cannot catch is a filter that is *valid and wrong*. Those fail as an empty result set, which an agent cannot distinguish from "no such records", so it reports a confident false negative. Three cases account for most of them:
-
-| Mistake | Why the agent makes it |
-| --- | --- |
-| `{"status": "Available"}` | Nothing told it the accepted values. |
-| `{"status": {"$ne": "archived"}}`, meaning "not archived" | Three-valued logic drops the `null`s — [SPEC.md §4.1](./SPEC.md#41-three-valued-logic). Add `"$unknownAs": true`. |
-| `{"tags": {"$in": ["urgent"]}}`, meaning array membership | `$in` compares the whole value. The element form is `{"$some": {"$in": [...]}}`. |
-
-Five things close them, and [the generator](#generating-a-per-resource-filter-schema) does all five for you from your resource schema — which is why the example server hands the model a *generated* schema rather than the published grammar:
-
-1. **Inline the schema, and keep its `$id`.** An MCP server ships `inputSchema` inside its `tools/list` response, and nothing on that path resolves a remote `$ref` — an absolute-URL reference reaches the model as an opaque string and no grammar. Vendor the file; see [Referencing by URL or by copy](#referencing-by-url-or-by-copy). Keep the `$id` when you nest it under `properties.filter`: the schema refers to itself for nested filters and for each field's operand domain, and those fragments resolve against the nearest `$id`. Strip it and they resolve against the tool schema's root instead — a different document, which ajv refuses to compile at all.
-2. **Narrow the queryable paths to the fields you expose.** Otherwise the tool definition says nothing about what is queryable and the agent learns your field names one `unknown-field` at a time. Prefer `anyOf` of `const` + `description` over a bare `enum` if you want per-field prose to survive — an `enum` has nowhere to document its members.
-3. **Publish the value domains.** The grammar cannot express them: every path shares one `Constraint`, so per-field operand types are not representable. Put `type`, `format` and `values` in your capability document ([SPEC.md §2.2](./SPEC.md#22-capability-discovery)) and restate any closed domain in the tool description.
-4. **Trim the operators to your profiles.** If you implement `core` and `strings`, delete the rest from the bundled copy so `$regex` is unavailable rather than rejected at runtime. `x-profiles` maps each profile to its operators; dropping `regex` means dropping `$flags` and its `dependentRequired` entry with it.
-5. **State the two silent rules explicitly.** `$ne` and `$not` exclude nulls unless the constraint carries `"$unknownAs": true`, and `$in` is not array membership. An agent that has not been told will not infer either. The generated schema says both in its root `description`; if you bundle by hand, put them in the tool description yourself.
-
-Two more, from building the example:
-
-**Define one tool per resource** — `search_pets`, `search_orders` — rather than a single `search(resource, filter)`. `tools/list` is static, so a generic tool cannot vary its field list by argument, and that field list is most of what makes the tool usable.
-
-**Return a rejection as a tool error, not a protocol error.** `isError: true` with the problem in the content puts the pointer in front of the model, which is what makes the repair-and-retry round trip happen at all. A JSON-RPC error gets swallowed by the client and the model learns nothing.
-
-The cost is size: for the pet resource the tool definition is about 42 KB, paid once per session against a tool the agent may call many times, each call otherwise a guess. `--descriptions brief` and `--include` trim it; dropping profiles you do not implement trims it more.
-
-## Generating a per-resource filter schema
-
-The published grammar shares one `Constraint` definition across every field, which is what makes it reusable — and what stops it carrying per-field domains. It can tell you `{"status": "Available"}` is well-formed. It cannot tell you `"Available"` is not one of the three values `status` takes, so the filter is accepted and matches nothing.
-
-If you already have a JSON Schema for the resource, that information is sitting right there. [`tools/generate-filter-schema.mjs`](./tools/generate-filter-schema.mjs) reads it and emits a filter schema in which every queryable path has its own constraint subschema, carrying only the operators that apply to it and only the operands it can take.
-
-```bash
-node tools/generate-filter-schema.mjs examples/pet.schema.json \
-  --id https://api.example.com/schemas/pet.filter.json \
-  --profiles core,strings,ranges,collections \
-  --capabilities pet.capabilities.json \
-  --out pet.filter.json
-```
-
-Given [`examples/pet.schema.json`](./examples/pet.schema.json), the generated [`pet.filter.json`](./examples/pet.filter.json) turns each of these from an empty result set into a `400`:
-
-| Filter | Rejected because |
-| --- | --- |
-| `{"status": "Available"}` | `status` is a closed domain of `available`, `pending`, `sold` |
-| `{"tags": {"$in": ["urgent"]}}` | `tags` is an array; its element operators are `$some`, `$every` and `$hasAll` |
-| `{"born": {"$gte": 2020}}` | `born` is a `date`-formatted string |
-| `{"name": {"$gt": "M"}}` | ordering is offered on numbers and on date/time formats, not on free text |
-| `{"species": {"$like": "ca%"}}` | pattern matching is not offered on an enumerated domain |
-| `{"birthDate": "2020-01-01"}` | not a property of the resource |
-
-It also writes the [SPEC.md §2.2](./SPEC.md#22-capability-discovery) capability document from the same source, so the schema and the published domains cannot drift apart.
-
-That file is what [`examples/mcp-server`](./examples/mcp-server) hands the model: a resource schema in, a tool definition out, with nothing written by hand in between.
-
-What it decides, and why:
-
-- **Operators follow the type.** Ordering and ranges go to numbers and to `date`/`date-time`/`time` strings; pattern matching goes to free text but not to enums or opaque formats like `uuid`; `$some`/`$every` go to arrays and recurse into arrays of objects, with `$hasAll` added for arrays of scalars. `$exists` is omitted where the property is required all the way up, `$isNull` where the type does not admit null, and `$unknownAs` where the field can be neither absent nor null — all three would be constants.
-- **Operands follow the value domain.** `$eq`, `$in` and friends carry the field's `enum`, `pattern` and bounds. The ordering operators deliberately do not: `{"$gt": 0}` against a field whose `minimum` is 1 is a sensible predicate.
-- **Prose comes from the grammar**, not from the generator, so operator descriptions stay in one place. `--descriptions brief` (the default) keeps them for the operators people get wrong and drops them for `$eq` and `$gt`, which matters when the output goes into an MCP tool definition.
-- **Narrowing only.** Every filter the generated schema accepts is also valid against the published grammar, so a server implementing the published semantics evaluates it unchanged. `tests/generator.test.mjs` asserts this.
-
-Opt a property out, or override its operators, from the resource schema itself:
-
-```json
-{ "internalNotes": { "type": "string", "x-jql": false } }
-{ "location":      { "type": "string", "x-jql": { "operators": ["$eq", "$in"] } } }
-```
-
-`--include`, `--exclude`, `--max-depth` and `--pointer` do the rest. Run `--help` for the full list.
-
 ## Using it from OpenAPI
 
-The second integration path, and the one that makes the first cheap: describe the endpoint once and the MCP tool wrapping it inherits the same grammar. Complete, CI-linted documents live in [`examples/`](./examples).
+One of the two integration paths this repo exists for; [Exposing search to an agent](#exposing-search-to-an-agent) covers the other. Complete, CI-linted documents live in [`examples/`](./examples).
 
 ### OpenAPI 3.1 — `POST /…/search`
 
@@ -403,6 +286,94 @@ A rejected filter is a `400` that says *which* of five things went wrong — `ma
 ```
 
 What matters is that the condition is distinguishable and the client can recover from it — an `unknown-field` error carrying the endpoint's queryable paths saves a round trip of guessing. [SPEC.md §8](./SPEC.md#8-errors).
+
+## Generating a per-resource filter schema
+
+The published grammar shares one `Constraint` definition across every field, which is what makes it reusable — and what stops it carrying per-field domains. It can tell you `{"status": "Available"}` is well-formed. It cannot tell you `"Available"` is not one of the three values `status` takes, so the filter is accepted and matches nothing.
+
+If you already have a JSON Schema for the resource, that information is sitting right there. [`tools/generate-filter-schema.mjs`](./tools/generate-filter-schema.mjs) reads it and emits a filter schema in which every queryable path has its own constraint subschema, carrying only the operators that apply to it and only the operands it can take.
+
+```bash
+node tools/generate-filter-schema.mjs examples/pet.schema.json \
+  --id https://api.example.com/schemas/pet.filter.json \
+  --profiles core,strings,ranges,collections \
+  --capabilities pet.capabilities.json \
+  --out pet.filter.json
+```
+
+Given [`examples/pet.schema.json`](./examples/pet.schema.json), the generated [`pet.filter.json`](./examples/pet.filter.json) turns each of these from an empty result set into a `400`:
+
+| Filter | Rejected because |
+| --- | --- |
+| `{"status": "Available"}` | `status` is a closed domain of `available`, `pending`, `sold` |
+| `{"tags": {"$in": ["urgent"]}}` | `tags` is an array; its element operators are `$some`, `$every` and `$hasAll` |
+| `{"born": {"$gte": 2020}}` | `born` is a `date`-formatted string |
+| `{"name": {"$gt": "M"}}` | ordering is offered on numbers and on date/time formats, not on free text |
+| `{"species": {"$like": "ca%"}}` | pattern matching is not offered on an enumerated domain |
+| `{"birthDate": "2020-01-01"}` | not a property of the resource |
+
+It also writes the [SPEC.md §2.2](./SPEC.md#22-capability-discovery) capability document from the same source, so the schema and the published domains cannot drift apart.
+
+That file is also what [`examples/mcp-server`](./examples/mcp-server) hands a model: a resource schema in, a tool definition out, with nothing written by hand in between.
+
+What it decides, and why:
+
+- **Operators follow the type.** Ordering and ranges go to numbers and to `date`/`date-time`/`time` strings; pattern matching goes to free text but not to enums or opaque formats like `uuid`; `$some`/`$every` go to arrays and recurse into arrays of objects, with `$hasAll` added for arrays of scalars. `$exists` is omitted where the property is required all the way up, `$isNull` where the type does not admit null, and `$unknownAs` where the field can be neither absent nor null — all three would be constants.
+- **Operands follow the value domain.** `$eq`, `$in` and friends carry the field's `enum`, `pattern` and bounds. The ordering operators deliberately do not: `{"$gt": 0}` against a field whose `minimum` is 1 is a sensible predicate.
+- **Prose comes from the grammar**, not from the generator, so operator descriptions stay in one place. `--descriptions brief` (the default) keeps them for the operators people get wrong and drops them for `$eq` and `$gt`, which matters when the output goes into an MCP tool definition.
+- **Narrowing only.** Every filter the generated schema accepts is also valid against the published grammar, so a server implementing the published semantics evaluates it unchanged. `tests/generator.test.mjs` asserts this.
+
+Opt a property out, or override its operators, from the resource schema itself:
+
+```json
+{ "internalNotes": { "type": "string", "x-jql": false } }
+{ "location":      { "type": "string", "x-jql": { "operators": ["$eq", "$in"] } } }
+```
+
+`--include`, `--exclude`, `--max-depth` and `--pointer` do the rest. Run `--help` for the full list.
+
+## Exposing search to an agent
+
+The other integration path, and a working server for it lives in [`examples/mcp-server/`](./examples/mcp-server) — one tool, real records, `node examples/mcp-server/demo.mjs` to watch it answer and reject.
+
+The integration is one property of one argument:
+
+```js
+inputSchema: {
+  type: "object",
+  properties: {
+    filter: FILTER_SCHEMA,      // the filter schema, inlined
+    limit:  { type: "integer", minimum: 1, maximum: 50, default: 20 },
+  },
+  required: ["filter"],
+}
+```
+
+An agent sees only the tool definition you hand it. It does not fetch this schema and it does not read [SPEC.md](./SPEC.md), so everything a correct filter requires has to be *in* that definition — which is exactly what inlining the grammar achieves. Each operator arrives carrying its own `description`, written for a reader who has never seen the language, and each field arrives carrying the values it accepts. Nothing about the query language needs to go in your system prompt, and so nothing about it drifts when your prompt changes.
+
+The language does the syntactic work for you. A malformed filter, an unknown field and an unsupported operator all come back as a `400` with a `pointer` at the offending clause ([SPEC.md §8](./SPEC.md#8-errors)) — enough for an agent to repair its own request in one round trip. What the language cannot catch is a filter that is *valid and wrong*. Those fail as an empty result set, which an agent cannot distinguish from "no such records", so it reports a confident false negative. Three cases account for most of them:
+
+| Mistake | Why the agent makes it |
+| --- | --- |
+| `{"status": "Available"}` | Nothing told it the accepted values. |
+| `{"status": {"$ne": "archived"}}`, meaning "not archived" | Three-valued logic drops the `null`s — [SPEC.md §4.1](./SPEC.md#41-three-valued-logic). Add `"$unknownAs": true`. |
+| `{"tags": {"$in": ["urgent"]}}`, meaning array membership | `$in` compares the whole value. The element form is `{"$some": {"$in": [...]}}`. |
+
+Five things close them, and [the generator](#generating-a-per-resource-filter-schema) does all five for you from your resource schema — which is why the example server hands the model a *generated* schema rather than the published grammar:
+
+1. **Inline the schema, and keep its `$id`.** An MCP server ships `inputSchema` inside its `tools/list` response, and nothing on that path resolves a remote `$ref` — an absolute-URL reference reaches the model as an opaque string and no grammar. Vendor the file; see [Referencing by URL or by copy](#referencing-by-url-or-by-copy). Keep the `$id` when you nest it under `properties.filter`: the schema refers to itself for nested filters and for each field's operand domain, and those fragments resolve against the nearest `$id`. Strip it and they resolve against the tool schema's root instead — a different document, which ajv refuses to compile at all.
+2. **Narrow the queryable paths to the fields you expose.** Otherwise the tool definition says nothing about what is queryable and the agent learns your field names one `unknown-field` at a time. Prefer `anyOf` of `const` + `description` over a bare `enum` if you want per-field prose to survive — an `enum` has nowhere to document its members.
+3. **Publish the value domains.** The grammar cannot express them: every path shares one `Constraint`, so per-field operand types are not representable. Put `type`, `format` and `values` in your capability document ([SPEC.md §2.2](./SPEC.md#22-capability-discovery)) and restate any closed domain in the tool description.
+4. **Trim the operators to your profiles.** If you implement `core` and `strings`, delete the rest from the bundled copy so `$regex` is unavailable rather than rejected at runtime. `x-profiles` maps each profile to its operators; dropping `regex` means dropping `$flags` and its `dependentRequired` entry with it.
+5. **State the two silent rules explicitly.** `$ne` and `$not` exclude nulls unless the constraint carries `"$unknownAs": true`, and `$in` is not array membership. An agent that has not been told will not infer either. The generated schema says both in its root `description`; if you bundle by hand, put them in the tool description yourself.
+
+Two more, from building the example:
+
+**Define one tool per resource** — `search_pets`, `search_orders` — rather than a single `search(resource, filter)`. `tools/list` is static, so a generic tool cannot vary its field list by argument, and that field list is most of what makes the tool usable.
+
+**Return a rejection as a tool error, not a protocol error.** `isError: true` with the problem in the content puts the pointer in front of the model, which is what makes the repair-and-retry round trip happen at all. A JSON-RPC error gets swallowed by the client and the model learns nothing.
+
+The cost is size: for the pet resource the tool definition is about 42 KB, paid once per session against a tool the agent may call many times, each call otherwise a guess. `--descriptions brief` and `--include` trim it; dropping profiles you do not implement trims it more.
 
 ## Safety
 

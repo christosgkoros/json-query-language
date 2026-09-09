@@ -27,16 +27,16 @@ No change to the grammar or to the semantics of evaluation. The only edit to
 
 ### Changed
 
-- **Repositioned around the agent case.** README now leads with the language as a search
-  interface an agent is *handed* rather than taught — the MCP tool definition first, OpenAPI
-  second — and §*Exposing search to an agent* moved ahead of the OpenAPI and generator sections
-  to match. No claim about the language changed; what changed is which use case the document
-  opens with. The `package.json` description and keywords, and the repository's own description,
-  follow.
-- **The schema's root `description`** no longer describes the artifact as something you `$ref`
-  from OpenAPI first. It now says what the schema is for a reader who arrives at it as a tool
-  argument — which is the reader it most often has, since the description is the first thing a
-  model reads in an inlined `inputSchema`. Non-normative prose; no validator behaviour changes.
+- **Positioned as one JSON-Schema-described query language with two integration points**, rather
+  than as an agent interface. An earlier revision in this same unreleased window led with the MCP
+  tool definition and moved §*Exposing search to an agent* ahead of the OpenAPI and generator
+  sections; that ordering is reverted and the "search interface for agents" framing is gone from
+  the README, the `package.json` description and the repository description. The agent use case
+  keeps its section and its runnable server — it is one of the two things the schema is for, not
+  the thing the document opens with.
+- **The schema's root `description`** likewise leads with the shared-grammar framing again, and
+  mentions inlining as a tool's input schema second. Non-normative prose; no validator behaviour
+  changes.
 - **The error format is no longer mandated.** [SPEC.md §8](./SPEC.md#8-errors) required
   [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details with media type
   `application/problem+json`. It now requires only that a rejected filter be answered with

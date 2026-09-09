@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://christosgkoros.com/json/query-language/v0.4.0/query-language-schema.json",
   "title": "JSON Query Language — Filter",
-  "description": "A JSON-encoded, SQL-flavoured predicate language for searching a collection of records. Everything needed to write a correct filter is described here, operator by operator, so this schema can be used directly as the input schema of a search tool an agent calls, or referenced from an OpenAPI document so every search endpoint in an API shares one filter grammar. Normative semantics are defined in SPEC.md.",
+  "description": "A JSON-encoded, SQL-flavoured predicate language for describing the request body of search operations (POST /…/search and QUERY /…). Everything needed to write a correct filter is described here, operator by operator, so one grammar can be shared by every search endpoint in an API: reference this schema from an OpenAPI document, or inline it as the input schema of a search tool. Normative semantics are defined in SPEC.md.",
   "$comment": "Version 0.4.0. See https://github.com/christosgkoros/json-query-language",
 
   "$ref": "#/$defs/Filter",

@@ -1,7 +1,7 @@
 {
   "name": "json-query-language",
   "version": "0.4.0",
-  "description": "A search interface for agents: a JSON-encoded, SQL-flavoured predicate language described entirely by one JSON Schema, so it drops into an MCP tool's inputSchema or $refs from OpenAPI.",
+  "description": "A JSON-encoded, SQL-flavoured predicate language described by a single JSON Schema: $ref it from OpenAPI, or inline it into an MCP tool's inputSchema.",
   "type": "module",
   "license": "MIT",
   "author": "Christos Gkoros",
