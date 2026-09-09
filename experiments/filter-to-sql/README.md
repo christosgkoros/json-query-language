@@ -2,7 +2,11 @@
 
 **This is an exercise, not a deliverable.** Nothing here is published, nothing
 here is versioned, and nothing in `../../query-language-schema.json`,
-`../../SPEC.md` or `../../tools/` depends on it. It exists to answer one
+`../../SPEC.md` or `../../tools/` depends on it. One example does —
+[`examples/mcp-server`](../../examples/mcp-server) imports `compile.mjs` so its
+search tool executes real queries rather than a second evaluator written for
+the occasion — but that is a demonstration borrowing a compiler, not the
+artifact acquiring a dependency. It exists to answer one
 question that a specification cannot answer about itself:
 
 > Does this design make an implementation simpler or harder than it had to be?

@@ -1,7 +1,7 @@
 {
   "name": "json-query-language",
   "version": "0.4.0",
-  "description": "A JSON-encoded, SQL-flavoured predicate language for POST /search and QUERY request bodies, described by a JSON Schema you can $ref from OpenAPI.",
+  "description": "A search interface for agents: a JSON-encoded, SQL-flavoured predicate language described entirely by one JSON Schema, so it drops into an MCP tool's inputSchema or $refs from OpenAPI.",
   "type": "module",
   "license": "MIT",
   "author": "Christos Gkoros",
@@ -19,6 +19,10 @@
     "query-language",
     "filter",
     "search",
+    "mcp",
+    "model-context-protocol",
+    "agents",
+    "llm-tools",
     "http-query-method"
   ],
   "main": "query-language-schema.json",
@@ -36,6 +40,8 @@
     "test": "node --test tests/*.test.mjs",
     "generate": "node tools/generate-filter-schema.mjs",
     "generate:example": "node tools/generate-filter-schema.mjs examples/pet.schema.json --id https://api.example.com/schemas/pet.filter.json --out examples/pet.filter.json --capabilities examples/pet.capabilities.json",
+    "example:mcp": "node examples/mcp-server/server.mjs",
+    "example:mcp:demo": "node examples/mcp-server/demo.mjs",
     "test:experiment": "node --test experiments/filter-to-sql/compile.test.mjs",
     "experiment": "node experiments/filter-to-sql/run.mjs"
   },

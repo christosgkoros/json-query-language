@@ -7,11 +7,36 @@ minor release may break compatibility, in which case the break is spelled out be
 
 ## [Unreleased]
 
-No change to the schema, the grammar or the semantics of evaluation. `query-language-schema.json`
-is untouched and its `$id` still names `v0.4.0`.
+No change to the grammar or to the semantics of evaluation. The only edit to
+`query-language-schema.json` is its root `description`, and its `$id` still names `v0.4.0`.
+
+### Added
+
+- **`examples/mcp-server/`** — a runnable MCP server whose one tool, `search_pets`, takes a
+  filter as its `filter` argument and nothing else. The tool's `inputSchema` is
+  `examples/pet.filter.json` inlined verbatim; validation is ajv against that same file, and
+  execution is the SQL compiler from `experiments/filter-to-sql` over an in-memory SQLite table,
+  so the queries are real. `node examples/mcp-server/demo.mjs` drives it over stdio and prints a
+  transcript: two filters that answer, one that shows the `$unknownAs` difference (4 matches
+  against 7), and the three valid-but-wrong filters from README §*Exposing search to an agent*
+  being rejected with a pointer at the clause. `npm run example:mcp` and
+  `npm run example:mcp:demo` are the entry points.
+- The example is also the first place the `$id`-when-inlining hazard is written down: nested
+  under `properties.filter`, a bundled schema's self-references resolve against its own `$id`, so
+  removing the `$id` breaks it — ajv fails to compile it at all.
 
 ### Changed
 
+- **Repositioned around the agent case.** README now leads with the language as a search
+  interface an agent is *handed* rather than taught — the MCP tool definition first, OpenAPI
+  second — and §*Exposing search to an agent* moved ahead of the OpenAPI and generator sections
+  to match. No claim about the language changed; what changed is which use case the document
+  opens with. The `package.json` description and keywords, and the repository's own description,
+  follow.
+- **The schema's root `description`** no longer describes the artifact as something you `$ref`
+  from OpenAPI first. It now says what the schema is for a reader who arrives at it as a tool
+  argument — which is the reader it most often has, since the description is the first thing a
+  model reads in an inlined `inputSchema`. Non-normative prose; no validator behaviour changes.
 - **The error format is no longer mandated.** [SPEC.md §8](./SPEC.md#8-errors) required
   [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details with media type
   `application/problem+json`. It now requires only that a rejected filter be answered with
