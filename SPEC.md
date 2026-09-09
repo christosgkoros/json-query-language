@@ -41,7 +41,7 @@ Operators are grouped into profiles so that a server can implement a subset hone
 
 A conforming implementation MUST implement `core` in full. Every other profile is OPTIONAL, and MUST be implemented in full or not at all — partial profiles defeat the purpose of advertising them.
 
-An implementation MUST reject an operator it does not support with an `unsupported-operator` problem (§8). It MUST NOT silently ignore the clause: dropping a predicate from a filter widens the result set, which is the most dangerous possible failure mode for an authorization-adjacent filter.
+An implementation MUST reject an operator it does not support with an `unsupported-operator` error (§8). It MUST NOT silently ignore the clause: dropping a predicate from a filter widens the result set, which is the most dangerous possible failure mode for an authorization-adjacent filter.
 
 ### 2.2 Capability discovery
 
@@ -128,7 +128,7 @@ Inside `$some` and `$every` (§5.8) the paths of the nested condition resolve ag
 
 ### 3.5 Which paths are queryable
 
-The schema's default path rule is permissive by design: the set of queryable fields is a property of the resource, not of the language. An implementation MUST reject a path it does not expose with an `unknown-field` problem (§8), and SHOULD publish the accepted set through §2.2. Endpoints that want the field set enforced by schema validation can narrow `$defs/FieldPath` in a bundled copy — see README §*Restricting the queryable field set*.
+The schema's default path rule is permissive by design: the set of queryable fields is a property of the resource, not of the language. An implementation MUST reject a path it does not expose with an `unknown-field` error (§8), and SHOULD publish the accepted set through §2.2. Endpoints that want the field set enforced by schema validation can narrow `$defs/FieldPath` in a bundled copy — see README §*Restricting the queryable field set*.
 
 An index suffix addresses the elements of a path rather than a member beneath it, so `items[0]` is the field `items` for this purpose: exposing `items` exposes `items[0]`. A **named** member beneath it (`items[0].sku`) is a separate path and MUST be exposed on its own.
 
@@ -200,7 +200,7 @@ A type mismatch resolves differently for equality than for ordering, and the dif
 
 `$exists`, `$isNull` and `$type` are total over types by construction and never UNKNOWN for this reason.
 
-This is a deliberate departure from SQL, where `'18' > 17` may or may not succeed depending on the engine. Servers that need coercion (a date column queried with a string, for instance) SHOULD perform it at the *boundary* — mapping the operand into the field's declared type once, before evaluation — and MUST reject an operand that cannot be mapped with an `invalid-operand` problem (§8) rather than evaluating it as UNKNOWN.
+This is a deliberate departure from SQL, where `'18' > 17` may or may not succeed depending on the engine. Servers that need coercion (a date column queried with a string, for instance) SHOULD perform it at the *boundary* — mapping the operand into the field's declared type once, before evaluation — and MUST reject an operand that cannot be mapped with an `invalid-operand` error (§8) rather than evaluating it as UNKNOWN.
 
 ### 4.4 Implicit AND
 
@@ -447,9 +447,9 @@ Fields backed by unindexed storage are their own denial-of-service surface. An i
 
 ## 8. Errors
 
-A rejected filter MUST be reported with [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details, media type `application/problem+json`, status `400 Bad Request`.
+A rejected filter MUST be answered with status `400 Bad Request`, and the response MUST tell the client which of these conditions applies. Which one it is decides what the client does next, so an error that says only "bad request" is not conforming.
 
-| `type` (relative to `https://christosgkoros.com/json/query-language/problems/`) | Meaning |
+| Condition | Meaning |
 | --- | --- |
 | `malformed-query` | The body does not conform to the schema: unknown operator, wrong operand type, structural error. |
 | `unknown-field` | The path is well-formed but this endpoint does not expose it. |
@@ -457,7 +457,9 @@ A rejected filter MUST be reported with [RFC 9457](https://www.rfc-editor.org/rf
 | `invalid-operand` | The operator is supported but the operand is not usable: an uncompilable `$regex`, a malformed `$like` escape, a value outside the field's domain. |
 | `query-too-complex` | A limit from §7 was exceeded. |
 
-The problem object SHOULD carry a **`pointer`** extension member: an [RFC 6901](https://www.rfc-editor.org/rfc/rfc6901) JSON Pointer into the request body, locating the offending clause. Without it a client faced with a deeply nested filter has no way to know which clause to fix.
+**The wire format is the API's own.** This specification mandates the conditions, not an envelope: an API that already has an error format SHOULD express them in it rather than carry a second format for one endpoint. Where there is no established format, [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details with media type `application/problem+json` is RECOMMENDED, taking each condition as a `type` URI relative to `https://christosgkoros.com/json/query-language/problems/`. The examples below use it.
+
+However it is encoded, the error SHOULD locate the offending clause with a **`pointer`**: an [RFC 6901](https://www.rfc-editor.org/rfc/rfc6901) JSON Pointer into the request body. Without it a client faced with a deeply nested filter has no way to know which clause to fix.
 
 ```http
 HTTP/1.1 400 Bad Request
@@ -473,7 +475,7 @@ Content-Type: application/problem+json
 }
 ```
 
-A problem SHOULD carry whatever the client needs to build a correct filter on its next attempt, not only a statement of what was wrong:
+An error SHOULD carry whatever the client needs to build a correct filter on its next attempt, not only a statement of what was wrong. The member names below are the RECOMMENDED ones; an API expressing these in its own envelope keeps the information and adapts the naming:
 
 - `unknown-field` SHOULD carry a **`queryableFields`** member listing the paths this endpoint does expose. Without it, a client that guessed one field name wrong has no way to converge except by guessing again.
 - `unsupported-operator` SHOULD name the endpoint's advertised profiles, as above.

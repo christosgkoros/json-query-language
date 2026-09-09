@@ -575,7 +575,7 @@ function emitQuantifierTarget(ctx, field, prefix) {
  * Emits a Filter over one object schema: logical operators plus one property
  * per queryable path. `additionalProperties: false` over an explicit property
  * list is what makes an unknown field a validation error rather than a runtime
- * `unknown-field` problem.
+ * `unknown-field` error.
  */
 function emitFilter(ctx, node, name, state) {
   if (name !== "__root__") ctx.reserved.add(name);

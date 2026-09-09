@@ -266,11 +266,11 @@ Not every backend can implement every operator, and silently ignoring a clause y
 
 `core` · `strings` · `regex` · `ranges` · `types` · `collections` · `refs` · `text`
 
-Implement `core` in full; take the rest whole or not at all. Reject unsupported operators with an `unsupported-operator` problem, and publish what you accept through a capability document. [SPEC.md §2](./SPEC.md#2-conformance).
+Implement `core` in full; take the rest whole or not at all. Reject unsupported operators with an `unsupported-operator` error, and publish what you accept through a capability document. [SPEC.md §2](./SPEC.md#2-conformance).
 
 ## Errors
 
-Rejected filters are reported as [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details with a `pointer` locating the offending clause:
+A rejected filter is a `400` that says *which* of five things went wrong — `malformed-query` · `unknown-field` · `unsupported-operator` · `invalid-operand` · `query-too-complex` — and, ideally, where. The envelope is your API's business; if you have no error format already, [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details with a `pointer` at the offending clause is the recommended default:
 
 ```json
 {
@@ -282,7 +282,7 @@ Rejected filters are reported as [RFC 9457](https://www.rfc-editor.org/rfc/rfc94
 }
 ```
 
-Types: `malformed-query` · `unknown-field` · `unsupported-operator` · `invalid-operand` · `query-too-complex`. [SPEC.md §8](./SPEC.md#8-errors).
+What matters is that the condition is distinguishable and the client can recover from it — an `unknown-field` error carrying the endpoint's queryable paths saves a round trip of guessing. [SPEC.md §8](./SPEC.md#8-errors).
 
 ## Generating a per-resource filter schema
 

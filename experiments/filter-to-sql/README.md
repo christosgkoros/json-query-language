@@ -231,10 +231,11 @@ paid for themselves repeatedly:
 `x-profiles` out of the grammar rather than restating it, so operator gating is
 a map lookup and a membership test that cannot drift from the published
 document. The §7 limits are two counters and a length check — about 25 lines,
-most of it the problem objects, for the whole `query-too-complex` story.
+most of it the error objects, for the whole `query-too-complex` story.
 
-**5. The error model falls out of the recursion.** SPEC §8 wants an RFC 9457
-problem carrying a JSON Pointer to the offending clause. The compiler is
+**5. The error model falls out of the recursion.** SPEC §8 wants the failing
+condition named and a JSON Pointer to the offending clause; this compiler
+carries both in the RFC 9457 shape §8 recommends. The compiler is
 already recursing with that pointer to look things up, so every `throw` gets it
 for free, and `unknown-field` can attach `queryableFields` because the binding
 *is* the list. This is the rare specification requirement that costs less to

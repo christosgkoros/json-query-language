@@ -5,6 +5,30 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — with the pre-1.0 caveat that a
 minor release may break compatibility, in which case the break is spelled out below.
 
+## [Unreleased]
+
+No change to the schema, the grammar or the semantics of evaluation. `query-language-schema.json`
+is untouched and its `$id` still names `v0.4.0`.
+
+### Changed
+
+- **The error format is no longer mandated.** [SPEC.md §8](./SPEC.md#8-errors) required
+  [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details with media type
+  `application/problem+json`. It now requires only that a rejected filter be answered with
+  `400 Bad Request` and that the response say **which** of the five conditions applies —
+  `malformed-query`, `unknown-field`, `unsupported-operator`, `invalid-operand`,
+  `query-too-complex` — because that is what a client branches on. The envelope is the API's own:
+  an API with an established error format should express these conditions in it rather than carry
+  a second format for one endpoint. RFC 9457 remains the RECOMMENDED default where there is none,
+  and the `type` URIs, the `pointer` member and the recovery members (`queryableFields`,
+  `accepted`) are unchanged as its encoding. This relaxes a requirement, so nothing that
+  conformed before stops conforming.
+- The prose in [README §Errors](./README.md#errors), [COMPARISON.md §4](./COMPARISON.md), the
+  OpenAPI examples and `experiments/filter-to-sql` follows: they now describe Problem Details as
+  the recommended shape rather than the required one, and name the failing *condition* where they
+  previously said "problem". The examples still model RFC 9457, since it is still the default a
+  greenfield API should pick.
+
 ## [0.4.0] — 2026-09-07
 
 **Breaking.** The `$id` is now `…/v0.4.0/query-language-schema.json`. This release resolves the

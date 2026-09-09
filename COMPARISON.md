@@ -97,7 +97,7 @@ Stated plainly, because these are the reasons to choose GraphQL and they are goo
 
 | | |
 | --- | --- |
-| **HTTP survives** | Cache-Control and ETags apply, `QUERY` and `GET` stay safe and cacheable, status codes mean what they say, errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problems with an RFC 6901 pointer at the offending clause ([SPEC.md §8](./SPEC.md#8-errors)). GraphQL's single POST endpoint forfeits intermediary caching; `application/graphql-response+json` recovers status codes but not cache keys. |
+| **HTTP survives** | Cache-Control and ETags apply, `QUERY` and `GET` stay safe and cacheable, status codes mean what they say, and a rejected filter is a `400` naming which of five conditions failed, with an RFC 6901 pointer at the offending clause, in whatever error format the API already uses ([SPEC.md §8](./SPEC.md#8-errors)). GraphQL's single POST endpoint forfeits intermediary caching; `application/graphql-response+json` recovers status codes but not cache keys. |
 | **Null semantics are specified** | [SPEC.md §4.1](./SPEC.md#41-three-valued-logic) and [§4.2](./SPEC.md#42-missing-versus-null) pin down three-valued logic and the missing-versus-null distinction. GraphQL's null propagation is its most notorious sharp edge, and its filter semantics are per-vendor folklore. |
 | **Complexity limits are normative** | [SPEC.md §7](./SPEC.md#7-safety-limits) bounds depth, clause count, set length and regex execution, and requires rejection rather than truncation. GraphQL query cost is left to each shop to solve. |
 | **Honest partial implementations** | Profiles ([SPEC.md §2.1](./SPEC.md#21-profiles)) let a server advertise the subset it implements and reject the rest, instead of mistranslating it. |
