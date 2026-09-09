@@ -34,38 +34,6 @@ Search endpoints attract bespoke query syntaxes. Each one arrives as an opaque s
 
 Confining the schema to the *predicate* — no projection, ordering or pagination — is what makes it reusable. Those parts differ per API; the filter does not.
 
-## Quickstart
-
-The schema is a single self-contained file. Nothing is published to a package registry yet — see [Status](#status) — so vendor it:
-
-```bash
-curl -O https://raw.githubusercontent.com/christosgkoros/json-query-language/main/query-language-schema.json
-```
-
-Swap `main` for a tag such as `v0.4.0` to pin a fixed copy.
-
-Validate a filter with any draft 2020-12 validator:
-
-```js
-import Ajv2020 from 'ajv/dist/2020.js'
-import addFormats from 'ajv-formats'
-import schema from './query-language-schema.json' with { type: 'json' }   // the vendored copy
-
-const ajv = new Ajv2020({ allowUnionTypes: true })
-addFormats(ajv)
-ajv.addVocabulary(['x-profiles'])          // the schema's one extension keyword
-
-const validate = ajv.compile(schema)
-validate({ status: 'open', age: { $gte: 18 } })   // true
-validate({ status: { $eqq: 'open' } })            // false — typos are caught
-```
-
-Then run the repo's own suite to see the grammar exercised end to end:
-
-```bash
-npm install && npm test
-```
-
 ## The two rules worth learning first
 
 **Sibling members AND together.** At every level.
@@ -387,41 +355,6 @@ A filter is user input that becomes a query plan. [SPEC.md §7](./SPEC.md#7-safe
 
 `$regex` is the largest exposure. Use a linear-time engine (RE2, Rust `regex`, Go `regexp`); if you only have a backtracking one, leave `regex` out of your advertised profiles and point clients at `$like`.
 
-## Migrating from v0.3.x
-
-v0.4.0 replaces the language's two array mechanisms with one quantifier family, and adds a modifier for the null trap. Every rewrite is mechanical:
-
-| v0.3.x | v0.4.0 |
-| --- | --- |
-| `{"items": {"$elemMatch": {…}}}` | `{"items": {"$some": {…}}}` |
-| `{"tags": {"$hasAny": ["a", "b"]}}` | `{"tags": {"$some": {"$in": ["a", "b"]}}}` |
-| `{"tags": {"$hasNone": ["a"]}}` | `{"tags": {"$not": {"$some": {"$in": ["a"]}}}}` |
-| `{"items[*].qty": {"$gt": 2}}` | `{"items": {"$some": {"qty": {"$gt": 2}}}}` |
-| `{"$or": [{"s": {"$ne": "x"}}, {"s": {"$isNull": true}}]}` | `{"s": {"$ne": "x", "$unknownAs": true}}` |
-
-`$hasAll` and `$size` are unchanged, and `items[0]` indexed paths still work — only the `[*]` wildcard segment is gone. `$every` is new: universal quantification over elements was not previously expressible.
-
-Two changes are **not** visible in a filter's shape, so a mechanical rewrite will not catch them:
-
-- **An empty array behaves differently.** A `[*]` clause on `[]` was UNKNOWN; the `$some` rewrite is FALSE. That only shows up under negation.
-- **A type-mismatched `$ne` now matches.** §4.3 previously said a cross-type comparison was UNKNOWN while §5.1 defined `$eq` as structural equality. It is now settled as FALSE for the equality family, so `{"notes": {"$ne": 3}}` matches a record whose `notes` is `"hello"`. Ordering, string and array operators still yield UNKNOWN on a type mismatch.
-
-Full rationale, including what was deliberately left unchanged, is in [`decisions/0001`](./decisions/0001-array-quantifiers-and-unknown-handling.md).
-
-## Migrating from v0.1.0
-
-v0.2.0 restructures the file. The old one had no assertion keywords at its root, so it accepted every instance — anything validating against it was passing vacuously.
-
-| v0.1.0 | v0.2.0 |
-| --- | --- |
-| `"id": "…/v0.1.0"` | `"$id": "…/v0.2.0/query-language-schema.json"` |
-| `#/components/schemas/Query` | `#/$defs/Filter`, or just `$ref` the file |
-| `#/components/schemas/Condition` | folded into `#/$defs/Filter` |
-| `#/components/schemas/equalCondition` &c. | folded into `#/$defs/ConstraintObject` |
-| `$isnull` | `$isNull` |
-| one operator family per field | any operators may be combined on a field |
-
-Filters themselves are unaffected apart from `$isnull` → `$isNull`; the v0.1.0 examples are kept as fixtures to prove it. Full detail in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ## Repository layout
 
