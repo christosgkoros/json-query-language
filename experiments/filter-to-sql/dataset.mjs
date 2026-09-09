@@ -51,7 +51,8 @@ export const RECORDS = [
   },
   {
     // rabies and an early booster live on *different* elements: the record
-    // that separates $elemMatch from a wildcard path (SPEC §5.9).
+    // that separates one $some carrying both conditions from two separate ones
+    // (SPEC §5.9).
     id: "p04", name: "Dash", species: "dog", status: "sold",
     born: "2019-01-20", weightKg: 31.0, neutered: true,
     microchip: "CHIP-004", tags: ["trained"],

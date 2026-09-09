@@ -1,13 +1,15 @@
 {
-  "description": "array membership operators",
+  "description": "element quantifiers and the operand-side $hasAll",
   "query": {
     "$and": [
       {
         "tags": {
-          "$hasAny": [
-            "urgent",
-            "p1"
-          ]
+          "$some": {
+            "$in": [
+              "urgent",
+              "p1"
+            ]
+          }
         }
       },
       {
@@ -20,9 +22,13 @@
       },
       {
         "labels": {
-          "$hasNone": [
-            "spam"
-          ]
+          "$not": {
+            "$some": {
+              "$in": [
+                "spam"
+              ]
+            }
+          }
         }
       }
     ]

@@ -10,7 +10,7 @@ Write the filter grammar once. Use it for every `POST /…/search` and `QUERY /�
     { "status": "available" },
     { "$or": [
         { "species": { "$in": ["cat", "dog"] } },
-        { "tags":    { "$hasAny": ["rescue", "senior"] } }
+        { "tags":    { "$some": { "$in": ["rescue", "senior"] } } }
     ]},
     { "born": { "$gte": "2020-01-01" } }
   ]
@@ -22,7 +22,7 @@ Write the filter grammar once. Use it for every `POST /…/search` and `QUERY /�
 - **Integration examples** — [`examples/`](./examples) — working OpenAPI 3.1 and 3.2 documents
 - **Generator** — [`tools/generate-filter-schema.mjs`](./tools/generate-filter-schema.mjs) — turns a resource's JSON Schema into a per-field filter schema
 - **Compared with GraphQL** — [`COMPARISON.md`](./COMPARISON.md) — what this overlaps with, what it does not, and what a JSON-Schema-native alternative would still need
-- **Version** — `0.3.1`. The schema's `$id` still names `v0.3.0`: the `$id` tracks the grammar, and 0.3.1 changed only the release process. See [`CHANGELOG.md`](./CHANGELOG.md) for the v0.1.0 migration.
+- **Version** — `0.4.0`, and the schema's `$id` names `v0.4.0`. This release is **breaking**: it replaces two array mechanisms with one quantifier family and adds `$unknownAs`. See [`CHANGELOG.md`](./CHANGELOG.md) for the migration, and [`decisions/0001`](./decisions/0001-array-quantifiers-and-unknown-handling.md) for why.
 
 > **Work in progress — including the name.** This is a design published for review, not a distribution you can depend on yet. The artifact's own name is a working title, and every identifier that follows from it — the package names, the schema `$id`, the URLs in the integration examples — is a placeholder. Several do not currently resolve, and getting them right is deliberately not a goal until the name is settled. The grammar and its semantics are the part worth reviewing. See [Status](#status) before you try to install or `$ref` anything.
 
@@ -42,7 +42,7 @@ The schema is a single self-contained file. Nothing is published to a package re
 curl -O https://raw.githubusercontent.com/christosgkoros/json-query-language/main/query-language-schema.json
 ```
 
-Swap `main` for a tag such as `v0.3.0` to pin a fixed copy.
+Swap `main` for a tag such as `v0.4.0` to pin a fixed copy.
 
 Validate a filter with any draft 2020-12 validator:
 
@@ -102,6 +102,7 @@ Every operator below has a matching fixture in [`tests/fixtures/valid/`](./tests
 | `$nin` | `{"color": {"$nin": ["red"]}}` | Value is none of |
 | `$exists` | `{"archivedAt": {"$exists": false}}` | Key present on the record |
 | `$isNull` | `{"middleName": {"$isNull": true}}` | Value is `null` |
+| `$unknownAs` | `{"s": {"$ne": "x", "$unknownAs": true}}` | Resolve this constraint's UNKNOWN to `true`/`false` |
 
 ### Ranges — profile `ranges`
 
@@ -119,7 +120,7 @@ Every operator below has a matching fixture in [`tests/fixtures/valid/`](./tests
 | `$ilike` `$nilike` | `{"title": {"$ilike": "%k8s%"}}` | Case-insensitive `$like` |
 | `$startsWith` | `{"sku": {"$startsWith": "INV-"}}` | Literal prefix — wildcards not interpreted |
 | `$endsWith` | `{"file": {"$endsWith": ".pdf"}}` | Literal suffix |
-| `$contains` | `{"body": {"$contains": "100%"}}` | Literal substring. **String-only** — for arrays use `$hasAny` |
+| `$contains` | `{"body": {"$contains": "100%"}}` | Literal substring. **String-only** — for arrays, quantify with `$some` |
 
 ### Regular expressions — profile `regex`
 
@@ -138,11 +139,11 @@ Every operator below has a matching fixture in [`tests/fixtures/valid/`](./tests
 
 | Operator | Example | Meaning |
 | --- | --- | --- |
-| `$hasAny` | `{"tags": {"$hasAny": ["p1", "urgent"]}}` | Array shares an element with the list |
-| `$hasAll` | `{"tags": {"$hasAll": ["a", "b"]}}` | Array contains all of them |
-| `$hasNone` | `{"tags": {"$hasNone": ["spam"]}}` | Array contains none of them |
+| `$some` | `{"items": {"$some": {"qty": {"$gt": 2}}}}` | At least one element satisfies the condition |
+| `$every` | `{"tags": {"$every": {"$startsWith": "a-"}}}` | Every element satisfies it. TRUE for `[]` |
+| `$hasAll` | `{"tags": {"$hasAll": ["a", "b"]}}` | Array contains every member of the list |
 | `$size` | `{"tags": {"$size": {"$gte": 1}}}` | Array length — exact, or a comparison |
-| `$elemMatch` | `{"items": {"$elemMatch": {"qty": {"$gt": 2}}}}` | One element satisfies all of it |
+
 
 ### Field references — profile `refs`
 
@@ -159,15 +160,17 @@ Every operator below has a matching fixture in [`tests/fixtures/valid/`](./tests
 
 ## Three things that will bite you
 
-**`$not` does not include nulls.** Evaluation is three-valued, like SQL. `{"$not": {"status": {"$eq": "archived"}}}` excludes records whose `status` is `null`, because `NOT UNKNOWN` is UNKNOWN and only TRUE matches. Write it out:
+**`$not` does not include nulls.** Evaluation is three-valued, like SQL. `{"$not": {"status": {"$eq": "archived"}}}` excludes records whose `status` is `null`, because `NOT UNKNOWN` is UNKNOWN and only TRUE matches. Say which you meant:
 
 ```json
-{ "$or": [ { "status": { "$ne": "archived" } }, { "status": { "$isNull": true } } ] }
+{ "status": { "$ne": "archived", "$unknownAs": true } }
 ```
+
+`$unknownAs` resolves that constraint's UNKNOWN, applied after every sibling operator including a field-level `$not`. [SPEC.md §4.6](./SPEC.md#46-resolving-unknown--unknownas).
 
 **Missing is not null.** `{"a": null}` and `{}` are different records. `$exists` tests the key, `$isNull` tests the value. [SPEC.md §4.2](./SPEC.md#42-missing-versus-null) has the full table.
 
-**`$in` does not search inside arrays.** It compares the value as a whole, so `{"tags": {"$in": ["a"]}}` asks whether `tags` *equals* `"a"`. Element membership is `$hasAny`. This differs from MongoDB on purpose — overloading `$in` makes the meaning depend on data a validator cannot see.
+**`$in` does not search inside arrays.** It compares the value as a whole, so `{"tags": {"$in": ["a"]}}` asks whether `tags` *equals* `"a"`. Element membership names its quantifier: `{"tags": {"$some": {"$in": ["a"]}}}`. This differs from MongoDB on purpose — overloading `$in` makes the meaning depend on data a validator cannot see.
 
 ## Field paths
 
@@ -178,13 +181,12 @@ A member name is a path into the record:
 | `name` | a top-level field |
 | `address.city` | a nested field |
 | `items[0].sku` | an array element by index |
-| `items[*].sku` | every element of an array |
 | `a\.b` | a single key whose literal name contains a dot |
 | `$$price` | a single key whose literal name is `$price` |
 
 `$` is reserved for operators, which is why a real `$price` field is escaped by doubling. A name starting with a single `$` that is not a known operator is rejected — that is what turns `$eqq` into an error rather than a filter that matches everything.
 
-Note that `items[*]` and `$elemMatch` differ: two wildcard constraints may be satisfied by *different* elements, while `$elemMatch` requires a single element to satisfy all of them. [SPEC.md §5.9](./SPEC.md#59-elemmatch-versus-wildcard-paths).
+A path addresses one position. To say something about an array's elements, quantify with `$some` or `$every` — and note that the nesting carries the scope: one `$some` with two conditions needs a *single* element to satisfy both, while two `$some` clauses may be satisfied by different elements. [SPEC.md §5.9](./SPEC.md#59-quantifier-scope).
 
 ## Using it from OpenAPI
 
@@ -212,7 +214,7 @@ paths:
 components:
   schemas:
     Filter:
-      $ref: 'https://christosgkoros.com/json/query-language/v0.3.0/query-language-schema.json'
+      $ref: 'https://christosgkoros.com/json/query-language/v0.4.0/query-language-schema.json'
     PetSearchRequest:
       type: object
       required: [filter]
@@ -257,7 +259,7 @@ Both work, and they trade off differently:
 
 | | Absolute `$id` URL | Bundled copy |
 | --- | --- | --- |
-| `$ref` | `https://…/v0.3.0/query-language-schema.json` | `./schemas/query-language-schema.json` |
+| `$ref` | `https://…/v0.4.0/query-language-schema.json` | `./schemas/query-language-schema.json` |
 | Upgrades | change one URL | re-vendor the file |
 | Tooling | needs a resolver that fetches remote refs | works everywhere |
 | MCP `inputSchema` | no — nothing on that path resolves remote refs | yes, and it is the only option |
@@ -284,7 +286,7 @@ Bundle the schema and replace **one** definition, `$defs/FieldPath`:
 }
 ```
 
-The narrowing applies at **every nesting level** — inside `$and`, inside `$not`, inside `$elemMatch`, and to `$field` references — because `Filter` reaches field names through `propertyNames → $ref '#/$defs/FieldPath'`. There is one override point, and this is it. (`tests/validate.test.mjs` exercises exactly this.)
+The narrowing applies at **every nesting level** — inside `$and`, inside `$not`, inside `$some` and `$every`, and to `$field` references — because `Filter` reaches field names through `propertyNames → $ref '#/$defs/FieldPath'`. There is one override point, and this is it. (`tests/validate.test.mjs` exercises exactly this.)
 
 Narrowing `FieldPath` restricts *which* fields may be named. It cannot restrict what may be said about them — every path still shares one `Constraint`. To get per-field operators and operand domains as well, generate the schema instead; see [Generating a per-resource filter schema](#generating-a-per-resource-filter-schema).
 
@@ -333,7 +335,7 @@ Given [`examples/pet.schema.json`](./examples/pet.schema.json), the generated [`
 | Filter | Rejected because |
 | --- | --- |
 | `{"status": "Available"}` | `status` is a closed domain of `available`, `pending`, `sold` |
-| `{"tags": {"$in": ["urgent"]}}` | `tags` is an array; its operators are `$hasAny`, `$hasAll`, `$hasNone` |
+| `{"tags": {"$in": ["urgent"]}}` | `tags` is an array; its element operators are `$some`, `$every` and `$hasAll` |
 | `{"born": {"$gte": 2020}}` | `born` is a `date`-formatted string |
 | `{"name": {"$gt": "M"}}` | ordering is offered on numbers and on date/time formats, not on free text |
 | `{"species": {"$like": "ca%"}}` | pattern matching is not offered on an enumerated domain |
@@ -343,7 +345,7 @@ It also writes the [SPEC.md §2.2](./SPEC.md#22-capability-discovery) capability
 
 What it decides, and why:
 
-- **Operators follow the type.** Ordering and ranges go to numbers and to `date`/`date-time`/`time` strings; pattern matching goes to free text but not to enums or opaque formats like `uuid`; `$hasAny`/`$hasAll`/`$hasNone` go to arrays of scalars; `$elemMatch` recurses into arrays of objects. `$exists` is omitted where the property is required all the way up, and `$isNull` where the type does not admit null — both would be constants.
+- **Operators follow the type.** Ordering and ranges go to numbers and to `date`/`date-time`/`time` strings; pattern matching goes to free text but not to enums or opaque formats like `uuid`; `$some`/`$every` go to arrays and recurse into arrays of objects, with `$hasAll` added for arrays of scalars. `$exists` is omitted where the property is required all the way up, `$isNull` where the type does not admit null, and `$unknownAs` where the field can be neither absent nor null — all three would be constants.
 - **Operands follow the value domain.** `$eq`, `$in` and friends carry the field's `enum`, `pattern` and bounds. The ordering operators deliberately do not: `{"$gt": 0}` against a field whose `minimum` is 1 is a sensible predicate.
 - **Prose comes from the grammar**, not from the generator, so operator descriptions stay in one place. `--descriptions brief` (the default) keeps them for the operators people get wrong and drops them for `$eq` and `$gt`, which matters when the output goes into an MCP tool definition.
 - **Narrowing only.** Every filter the generated schema accepts is also valid against the published grammar, so a server implementing the published semantics evaluates it unchanged. `tests/generator.test.mjs` asserts this.
@@ -366,8 +368,8 @@ The language does the syntactic work for you. A malformed filter, an unknown fie
 | Mistake | Why the agent makes it |
 | --- | --- |
 | `{"status": "Available"}` | Nothing told it the accepted values. |
-| `{"status": {"$ne": "archived"}}`, meaning "not archived" | Three-valued logic drops the `null`s — [SPEC.md §4.1](./SPEC.md#41-three-valued-logic). |
-| `{"tags": {"$in": ["urgent"]}}`, meaning array membership | `$in` compares the whole value. The element operator is `$hasAny`. |
+| `{"status": {"$ne": "archived"}}`, meaning "not archived" | Three-valued logic drops the `null`s — [SPEC.md §4.1](./SPEC.md#41-three-valued-logic). Add `"$unknownAs": true`. |
+| `{"tags": {"$in": ["urgent"]}}`, meaning array membership | `$in` compares the whole value. The element form is `{"$some": {"$in": [...]}}`. |
 
 Five things close them — and [the generator](#generating-a-per-resource-filter-schema) does the first four for you, from your resource schema:
 
@@ -375,7 +377,7 @@ Five things close them — and [the generator](#generating-a-per-resource-filter
 2. **Narrow `$defs/FieldPath` to the fields you expose.** Otherwise the tool definition says nothing about what is queryable and the agent learns your field names one `unknown-field` at a time. Prefer `anyOf` of `const` + `description` over a bare `enum` if you want per-field prose to survive — an `enum` has nowhere to document its members.
 3. **Publish the value domains.** The grammar cannot express them: every path shares one `Constraint`, so per-field operand types are not representable. Put `type`, `format` and `values` in your capability document ([SPEC.md §2.2](./SPEC.md#22-capability-discovery)) and restate any closed domain in the tool description.
 4. **Trim the operators to your profiles.** If you implement `core` and `strings`, delete the rest from the bundled copy so `$regex` is unavailable rather than rejected at runtime. `x-profiles` maps each profile to its operators; dropping `regex` means dropping `$flags` and its `dependentRequired` entry with it.
-5. **State the two silent rules explicitly** in the tool description: `$ne` and `$not` exclude nulls, and `$in` is not array membership. An agent that has not been told will not infer either.
+5. **State the two silent rules explicitly** in the tool description: `$ne` and `$not` exclude nulls unless the constraint carries `"$unknownAs": true`, and `$in` is not array membership. An agent that has not been told will not infer either.
 
 One MCP-specific note: define one tool per resource (`search_pets`, `search_orders`) rather than a single `search(resource, filter)`. `tools/list` is static, so a generic tool cannot vary its field list by argument — and that field list is most of what makes the tool usable.
 
@@ -384,6 +386,27 @@ One MCP-specific note: define one tool per resource (`search_pets`, `search_orde
 A filter is user input that becomes a query plan. [SPEC.md §7](./SPEC.md#7-safety-limits) sets recommended bounds on nesting depth, clause count, set length and body size, and requires rejection rather than truncation when they are exceeded.
 
 `$regex` is the largest exposure. Use a linear-time engine (RE2, Rust `regex`, Go `regexp`); if you only have a backtracking one, leave `regex` out of your advertised profiles and point clients at `$like`.
+
+## Migrating from v0.3.x
+
+v0.4.0 replaces the language's two array mechanisms with one quantifier family, and adds a modifier for the null trap. Every rewrite is mechanical:
+
+| v0.3.x | v0.4.0 |
+| --- | --- |
+| `{"items": {"$elemMatch": {…}}}` | `{"items": {"$some": {…}}}` |
+| `{"tags": {"$hasAny": ["a", "b"]}}` | `{"tags": {"$some": {"$in": ["a", "b"]}}}` |
+| `{"tags": {"$hasNone": ["a"]}}` | `{"tags": {"$not": {"$some": {"$in": ["a"]}}}}` |
+| `{"items[*].qty": {"$gt": 2}}` | `{"items": {"$some": {"qty": {"$gt": 2}}}}` |
+| `{"$or": [{"s": {"$ne": "x"}}, {"s": {"$isNull": true}}]}` | `{"s": {"$ne": "x", "$unknownAs": true}}` |
+
+`$hasAll` and `$size` are unchanged, and `items[0]` indexed paths still work — only the `[*]` wildcard segment is gone. `$every` is new: universal quantification over elements was not previously expressible.
+
+Two changes are **not** visible in a filter's shape, so a mechanical rewrite will not catch them:
+
+- **An empty array behaves differently.** A `[*]` clause on `[]` was UNKNOWN; the `$some` rewrite is FALSE. That only shows up under negation.
+- **A type-mismatched `$ne` now matches.** §4.3 previously said a cross-type comparison was UNKNOWN while §5.1 defined `$eq` as structural equality. It is now settled as FALSE for the equality family, so `{"notes": {"$ne": 3}}` matches a record whose `notes` is `"hello"`. Ordering, string and array operators still yield UNKNOWN on a type mismatch.
+
+Full rationale, including what was deliberately left unchanged, is in [`decisions/0001`](./decisions/0001-array-quantifiers-and-unknown-handling.md).
 
 ## Migrating from v0.1.0
 
@@ -431,7 +454,7 @@ experiments/filter-to-sql/     an exercise: compile a filter to SQL, then judge 
 
 | What the README says | Reality today |
 | --- | --- |
-| `$id` / `$ref` — `https://christosgkoros.com/json/query-language/v0.3.0/query-language-schema.json` | Does not resolve. Used throughout [Using it from OpenAPI](#using-it-from-openapi) and in the capability document examples. |
+| `$id` / `$ref` — `https://christosgkoros.com/json/query-language/v0.4.0/query-language-schema.json` | Does not resolve. Used throughout [Using it from OpenAPI](#using-it-from-openapi) and in the capability document examples. |
 | The package names `json-query-language` and `@christosgkoros/json-query-language` | Not published, to npmjs or to GitHub Packages, and the release pipeline no longer tries to. Claiming a name under a working title would burn it. |
 | The version line at the top, and the version inside the `$id` | May lag the latest tag. `CHANGELOG.md` is authoritative. |
 

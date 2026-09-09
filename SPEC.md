@@ -1,6 +1,6 @@
 # JSON Query Language — Specification
 
-**Version 0.3.0** · Dialect: JSON Schema draft 2020-12 · Schema: [`query-language-schema.json`](./query-language-schema.json)
+**Version 0.4.0** · Dialect: JSON Schema draft 2020-12 · Schema: [`query-language-schema.json`](./query-language-schema.json)
 
 This document defines the semantics of the language. The schema defines only its *shape* — a validator can tell you that `{"age": {"$gt": 18}}` is well-formed, but not what it means when `age` is `null`, absent, or a string. Everything a server and a client must agree on beyond well-formedness is specified here.
 
@@ -10,7 +10,7 @@ For a guided introduction, see [README.md](./README.md).
 
 ## 1. Scope
 
-The language expresses a **predicate over a record**: a boolean function that, given one record, answers whether it matches. It is deliberately *not* a full query language. It has no projection, ordering, pagination, grouping or joins — those belong to the enclosing request body, where each API is free to define them. Confining this schema to the predicate is what makes it reusable across endpoints whose result shapes have nothing else in common.
+The language expresses a **predicate over a record**: a function that, given one record, answers whether it matches. The answer is three-valued — TRUE, FALSE or UNKNOWN — and only TRUE matches (§4.1). It is deliberately *not* a full query language. It has no projection, ordering, pagination, grouping or joins — those belong to the enclosing request body, where each API is free to define them. Confining this schema to the predicate is what makes it reusable across endpoints whose result shapes have nothing else in common.
 
 A conforming request body embeds a filter as a member, conventionally named `filter`:
 
@@ -30,12 +30,12 @@ Operators are grouped into profiles so that a server can implement a subset hone
 
 | Profile | Operators |
 | --- | --- |
-| `core` | `$and` `$or` `$nor` `$not` `$eq` `$ne` `$in` `$nin` `$gt` `$gte` `$lt` `$lte` `$exists` `$isNull` |
+| `core` | `$and` `$or` `$nor` `$not` `$eq` `$ne` `$in` `$nin` `$gt` `$gte` `$lt` `$lte` `$exists` `$isNull` `$unknownAs` |
 | `strings` | `$like` `$nlike` `$ilike` `$nilike` `$startsWith` `$endsWith` `$contains` |
 | `regex` | `$regex` `$flags` |
 | `ranges` | `$between` `$nbetween` |
 | `types` | `$type` |
-| `collections` | `$hasAny` `$hasAll` `$hasNone` `$size` `$elemMatch` |
+| `collections` | `$some` `$every` `$hasAll` `$size` |
 | `refs` | `$field` `$literal` |
 | `text` | `$search` |
 
@@ -49,7 +49,7 @@ An implementation SHOULD publish which profiles and fields it accepts. This spec
 
 ```json
 {
-  "queryLanguage": "https://christosgkoros.com/json/query-language/v0.3.0/query-language-schema.json",
+  "queryLanguage": "https://christosgkoros.com/json/query-language/v0.4.0/query-language-schema.json",
   "profiles": ["core", "strings", "ranges"],
   "fields": {
     "status": {
@@ -101,14 +101,15 @@ key-char       = unescaped / escape-seq
 unescaped      = %x20-2D / %x2F-5A / %x5E-10FFFF
                                  ; any character except "." "[" "\" "]"
 escape-seq     = "\" ( "." / "[" / "]" / "\" )
-index          = "[" ( 1*DIGIT / "*" ) "]"
+index          = "[" 1*DIGIT "]"
 ```
 
 - `address.city` — a member of a nested object.
 - `items[0].sku` — the first element of an array.
-- `items[*].sku` — every element of an array (see §5.9).
 - `a\.b` — a single key whose literal name contains a dot.
 - `$$price` — a single key whose literal name is `$price`.
+
+A path addresses **one** position. To say something about the elements of an array without naming an index, quantify explicitly with `$some` or `$every` (§5.8). There is deliberately no wildcard segment: a path shape is the wrong place to carry a quantifier, because it cannot be declined by profile (§2.1) and it leaves the quantifier's scope implicit.
 
 ### 3.3 The `$` prefix is reserved
 
@@ -116,17 +117,20 @@ Within a `Filter` object, a member name beginning with `$` is an operator. A rec
 
 ### 3.4 Resolution
 
-Resolving a path against a record yields a **sequence** of zero or more values:
+Resolving a path against a record yields **zero values or exactly one**:
 
-- A path with no wildcard yields zero values (the path does not exist) or exactly one.
-- A path containing `[*]` yields one value per matching element, in document order.
-- Traversing *into* a non-object or non-array yields zero values.
+- Zero, when the path does not exist — including when traversing *into* a non-object or non-array.
+- One, otherwise. That one value may itself be `null`, an array or an object.
 
 The distinction between "yields zero values" and "yields one value that is `null`" is load-bearing; see §4.2.
+
+Inside `$some` and `$every` (§5.8) the paths of the nested condition resolve against the **element** rather than against the record, by the same rule.
 
 ### 3.5 Which paths are queryable
 
 The schema's default path rule is permissive by design: the set of queryable fields is a property of the resource, not of the language. An implementation MUST reject a path it does not expose with an `unknown-field` problem (§8), and SHOULD publish the accepted set through §2.2. Endpoints that want the field set enforced by schema validation can narrow `$defs/FieldPath` in a bundled copy — see README §*Restricting the queryable field set*.
+
+An index suffix addresses the elements of a path rather than a member beneath it, so `items[0]` is the field `items` for this purpose: exposing `items` exposes `items[0]`. A **named** member beneath it (`items[0].sku`) is a separate path and MUST be exposed on its own.
 
 ## 4. Evaluation
 
@@ -134,14 +138,16 @@ The schema's default path rule is permissive by design: the set of queryable fie
 
 Every clause evaluates to **TRUE**, **FALSE** or **UNKNOWN**. UNKNOWN arises when a comparison is not meaningful — the path resolved to nothing, or to `null`, or to a value of a type the operator cannot order.
 
-| `a` | `b` | `a AND b` | `a OR b` |
-| --- | --- | --- | --- |
-| T | T | T | T |
-| T | F | F | T |
-| T | U | U | T |
-| F | F | F | F |
-| F | U | F | U |
-| U | U | U | U |
+| `a` | `b` | `a AND b` | `a OR b` | `a NOR b` |
+| --- | --- | --- | --- | --- |
+| T | T | T | T | F |
+| T | F | F | T | F |
+| T | U | U | T | F |
+| F | F | F | F | T |
+| F | U | F | U | U |
+| U | U | U | U | U |
+
+All three are commutative, so the six rows cover all nine combinations.
 
 | `a` | `NOT a` |
 | --- | --- |
@@ -149,11 +155,17 @@ Every clause evaluates to **TRUE**, **FALSE** or **UNKNOWN**. UNKNOWN arises whe
 | F | T |
 | U | **U** |
 
-`$nor [a, b, …]` is `NOT (a OR b OR …)`.
+`$nor [a, b, …]` is `NOT (a OR b OR …)`, which is TRUE only when **every** member is FALSE. One UNKNOWN member makes the whole thing UNKNOWN, so a `$nor` over a nullable field excludes the records whose field is null or absent — the same surprise as `$not`, one level up.
 
 **A record is included in the result if and only if the filter evaluates to TRUE.** UNKNOWN excludes, exactly as SQL's `WHERE` does.
 
-The consequence that surprises people: `{"$not": {"status": {"$eq": "archived"}}}` does **not** match records whose `status` is `null` or absent, because `$eq` returned UNKNOWN and `NOT UNKNOWN` is UNKNOWN. To include them, say so:
+The consequence that surprises people: `{"$not": {"status": {"$eq": "archived"}}}` does **not** match records whose `status` is `null` or absent, because `$eq` returned UNKNOWN and `NOT UNKNOWN` is UNKNOWN. To include them, say so with `$unknownAs` (§4.6):
+
+```json
+{ "status": { "$ne": "archived", "$unknownAs": true } }
+```
+
+which is equivalent to the longhand this specification prescribed before v0.4.0:
 
 ```json
 { "$or": [ { "status": { "$ne": "archived" } }, { "status": { "$isNull": true } } ] }
@@ -175,7 +187,18 @@ Implementations backed by a store that cannot distinguish the two (many document
 
 ### 4.3 Types and coercion
 
-There is **no implicit coercion**. Comparing values of different JSON types yields UNKNOWN, never an error and never a coerced comparison. `{"age": {"$gt": "18"}}` against `{"age": 21}` is UNKNOWN, not TRUE.
+There is **no implicit coercion**. Comparing values of different JSON types is never an error and never a coerced comparison. `{"age": {"$gt": "18"}}` against `{"age": 21}` is UNKNOWN, not TRUE.
+
+A type mismatch resolves differently for equality than for ordering, and the difference is observable under negation:
+
+| Operator family | Type mismatch | Why |
+| --- | --- | --- |
+| `$eq`, `$ne`, `$in`, `$nin`, `$hasAll` | **FALSE** (unequal) | Equality is structural (§5.1). A string and a number are not equal; nothing is unknown about it. So `{"notes": {"$ne": 3}}` **does** match a record whose `notes` is `"hello"`. |
+| `$gt`, `$gte`, `$lt`, `$lte`, `$between`, `$nbetween` | **UNKNOWN** | No ordering is defined across types (§5.2). |
+| `$like` and friends, `$regex`, `$search`, `$startsWith`, `$endsWith`, `$contains` | **UNKNOWN** | The operator is defined on strings only (§5.5, §5.6). |
+| `$some`, `$every`, `$hasAll`, `$size` | **UNKNOWN** | The operator is defined on arrays only (§5.8). |
+
+`$exists`, `$isNull` and `$type` are total over types by construction and never UNKNOWN for this reason.
 
 This is a deliberate departure from SQL, where `'18' > 17` may or may not succeed depending on the engine. Servers that need coercion (a date column queried with a string, for instance) SHOULD perform it at the *boundary* — mapping the operand into the field's declared type once, before evaluation — and MUST reject an operand that cannot be mapped with an `invalid-operand` problem (§8) rather than evaluating it as UNKNOWN.
 
@@ -201,6 +224,37 @@ Because JSON object members are unordered and duplicate names are not interopera
 
 Evaluation order is unobservable: operators are side-effect free and no operator's well-formedness depends on another's result. Implementations are free to reorder, short-circuit and push down clauses however their storage engine prefers.
 
+### 4.6 Resolving UNKNOWN — `$unknownAs`
+
+`$unknownAs` is a modifier on a constraint object, not a predicate. It resolves that constraint's UNKNOWN to the value given:
+
+```json
+{ "status": { "$ne": "archived", "$unknownAs": true } }
+```
+
+"`status` is not `archived`, and count the records where `status` is null or absent." It is the one-clause form of the §4.1 longhand, and it is the answer to the language's most common mistake: a negative predicate that silently drops the rows a client meant to include.
+
+It MUST be accompanied by at least one operator; the schema enforces this. Two rules fix its meaning.
+
+**It applies last.** The modifier resolves the result of the whole constraint object — after every sibling operator has been evaluated and ANDed together, and after a field-level `$not` (§5.13). For the conjunction this is unambiguous either way, because resolving UNKNOWN distributes over three-valued AND: writing `c` for the resolution, `c(a AND b)` equals `c(a) AND c(b)` in all nine cases. An implementation MAY therefore resolve per operator or once over the conjunction.
+
+It does **not** distribute over negation, which is why the ordering is normative rather than left to the implementer:
+
+```json
+{ "age": { "$not": { "$gt": 5 }, "$unknownAs": true } }
+{ "age": { "$not": { "$gt": 5, "$unknownAs": true } } }
+```
+
+For a record with no `age`, the first is TRUE — the negation yields UNKNOWN, which is then resolved to TRUE — and the second is FALSE, because the inner UNKNOWN is resolved to TRUE first and then negated. Both are legal; the nesting says which is meant.
+
+**It is scoped to its own constraint object.** It does not reach into a nested `$some` or `$every` condition, and it does not affect sibling fields. Inside a quantifier it applies per element:
+
+```json
+{ "tags": { "$some": { "$gt": 5, "$unknownAs": true } } }
+```
+
+`$unknownAs` is a no-op wherever UNKNOWN is unreachable — on `$exists`, which is total (§4.2). Implementations MUST accept it there rather than rejecting it, so that a generated schema need not special-case the field; it simply changes nothing. A generator MAY omit it from a field that can be neither absent nor null, for the same reason it omits `$exists` and `$isNull` there.
+
 ## 5. Operator semantics
 
 Throughout, *the value* means the value the field path resolved to (§3.4). Unless stated otherwise, an operator applied to a path that resolved to nothing yields UNKNOWN.
@@ -209,7 +263,9 @@ Throughout, *the value* means the value the field path resolved to (§3.4). Unle
 
 Structural equality over JSON values. Objects compare irrespective of member order; arrays compare element-wise and are order-**sensitive**. Numbers compare by mathematical value, so `1`, `1.0` and `1e0` are equal.
 
-`$eq: null` is TRUE when the value is `null` — it is the one comparison for which `null` is an operand rather than a cause of UNKNOWN. `$ne` is the negation of `$eq` under three-valued logic, so `{"a": {"$ne": 1}}` is UNKNOWN when `a` is absent.
+A value of a **different JSON type is unequal, not unknown**: `$eq` is FALSE and `$ne` is TRUE (§4.3). Only absence and `null` produce UNKNOWN here.
+
+`$eq: null` is TRUE when the value is `null` — it is the one comparison for which `null` is an operand rather than a cause of UNKNOWN. `$ne` is the negation of `$eq` under three-valued logic, so `{"a": {"$ne": 1}}` is UNKNOWN when `a` is absent. Add `$unknownAs: true` (§4.6) to match those records.
 
 The scalar shorthand `{"status": "open"}` is exactly `{"status": {"$eq": "open"}}`. It is available for strings, numbers, booleans and `null`. Arrays and objects are excluded so that `{"tags": ["a", "b"]}` cannot be read as either `$eq` or `$in`; write the operator you mean.
 
@@ -229,9 +285,15 @@ Both bounds SHOULD be of the same type; if they are not, the result is UNKNOWN. 
 
 `$in` is TRUE when the value is `$eq` to at least one member of the list. `$nin` is its negation.
 
-**`$in` compares the value as a whole.** If the field is array-valued, `{"tags": {"$in": ["a"]}}` asks whether the array *equals* `"a"` — which it does not. Element membership is `$hasAny`. This differs from MongoDB, which overloads `$in`; the split is intentional, because overloading makes the meaning depend on data the validator cannot see.
+**`$in` compares the value as a whole.** If the field is array-valued, `{"tags": {"$in": ["a"]}}` asks whether the array *equals* `"a"` — which it does not. Element membership is a quantifier over the elements:
 
-The list is a set: duplicate members are rejected by the schema, and order is not significant.
+```json
+{ "tags": { "$some": { "$in": ["a"] } } }
+```
+
+This differs from MongoDB, which overloads `$in`; the split is intentional, because overloading makes the meaning depend on data the validator cannot see. What v0.4.0 changed is that the element form now names its quantifier, so the two spellings can no longer be mistaken for variants of one operator.
+
+The list is a set: duplicate members are rejected by the schema, and order is not significant. Members are drawn from the same operand grammar as every other operator, so a `$field` reference or a `$literal` may appear among them.
 
 ### 5.5 Pattern matching — `$like`, `$nlike`, `$ilike`, `$nilike`
 
@@ -255,7 +317,7 @@ A non-string value yields UNKNOWN.
 
 Literal, case-sensitive substring tests. `%` and `_` carry **no** special meaning here — `{"body": {"$contains": "100%"}}` looks for the three characters `100%`. An empty operand is TRUE for any string value.
 
-`$contains` is string-only. For array membership use `$hasAny`, `$hasAll` or `$hasNone` (§5.8).
+`$contains` is string-only. For arrays, quantify over the elements: `{"tags": {"$some": {"$contains": "x"}}}` (§5.8).
 
 ### 5.7 Regular expressions — `$regex`, `$flags`
 
@@ -265,37 +327,67 @@ The operand is an ECMA-262 regular expression, matched **unanchored**: the claus
 
 A pattern that does not compile MUST be rejected as `invalid-operand`. See §7 on execution limits — this operator is the language's largest denial-of-service surface.
 
-### 5.8 Collections — `$hasAny`, `$hasAll`, `$hasNone`, `$size`, `$elemMatch`
+### 5.8 Collections — `$some`, `$every`, `$hasAll`, `$size`
 
-These require the value to be an array; any other type yields UNKNOWN.
+All four require the value to be an array; any other type — including `null`, and including a path that resolved to nothing — yields UNKNOWN.
 
-- `$hasAny` — TRUE when at least one operand is `$eq` to at least one element.
-- `$hasAll` — TRUE when every operand is `$eq` to some element. Set semantics: multiplicity is ignored, so `["a"]` satisfies `$hasAll: ["a"]` and `["a","a"]` does not additionally satisfy anything.
-- `$hasNone` — TRUE when no operand matches any element. The negation of `$hasAny`.
-- `$size` — compares the array's length. `{"$size": 3}` is exact; `{"$size": {"$gte": 1}}` compares. An empty array has size `0`.
-- `$elemMatch` — TRUE when at least one element satisfies the nested condition. Supply a `Filter` when elements are objects (paths inside are relative to the element) or a constraint object when they are scalars.
-
-### 5.9 `$elemMatch` versus wildcard paths
-
-They are not the same, and the difference matters:
+**`$some` and `$every` quantify over the field's elements.** Each takes a `Filter` when the elements are objects, in which case the paths inside resolve against the element (§3.4), or a constraint object when the elements are scalars:
 
 ```json
-{ "items[*].qty": { "$gt": 2 }, "items[*].sku": { "$startsWith": "A" } }
+{ "items": { "$some":  { "qty": { "$gt": 2 } } } }
+{ "tags":  { "$every": { "$startsWith": "adopt-" } } }
 ```
 
-is TRUE when *some* item has `qty > 2` and *some* item has an `A` SKU — possibly different items.
+- `$some` — TRUE when at least one element satisfies the condition.
+- `$every` — TRUE when every element satisfies it.
+
+**The quantifiers are two-valued over elements.** An element for which the condition is UNKNOWN does not satisfy it, and does not make the quantifier UNKNOWN. So over any array both operators return TRUE or FALSE, and UNKNOWN can only come from the field itself:
+
+| Value of the field | `$some` | `$every` |
+| --- | --- | --- |
+| Array, at least one element satisfies | TRUE | FALSE unless all do |
+| Array, every element satisfies | TRUE | TRUE |
+| Array, no element satisfies | FALSE | FALSE |
+| Array, every element UNKNOWN | FALSE | FALSE |
+| Empty array `[]` | **FALSE** | **TRUE** (vacuously) |
+| `null` | UNKNOWN | UNKNOWN |
+| Path resolved to nothing | UNKNOWN | UNKNOWN |
+| Present but not an array | UNKNOWN | UNKNOWN |
+
+The two vacuous-case answers are the ones worth reading twice. `$every` over an empty array is TRUE because there is no element that fails; `$every` over a **missing** array is UNKNOWN, not vacuously TRUE, because there is no array at all.
+
+Note that `$every` is not expressible as a negation. `{"$not": {"items": {"$some": c}}}` is "no element satisfies `c`", and `$some` over the negation of `c` admits elements for which `c` is UNKNOWN. Neither is `$every`.
+
+**Operand shape.** `$some` and `$every` accept either a `Filter` or a constraint object, and the two overlap on a leading `$not`. An implementation MUST disambiguate by scanning for the first member that can only be one of the two — a field path, `$and`, `$or` or `$nor` makes it a `Filter`; any other operator makes it a constraint object — recursing through the bodies of `$not`, `$and`, `$or` and `$nor` when the outer member is itself ambiguous. If no such member exists, it is a constraint object.
+
+**`$hasAll` quantifies over the operand, not over the elements.** TRUE when every member of the list is `$eq` to some element — possibly different elements. Set semantics: multiplicity is ignored, so `["a"]` satisfies `$hasAll: ["a"]` and `["a","a"]` does not additionally satisfy anything. It is kept as its own operator because that doubled quantifier is not a `$some` or an `$every` over any single condition; the `$some`-per-member rewrite would grow with the operand and run into the §7 clause limit.
+
+**`$size` compares the array's length.** `{"$size": 3}` is exact; `{"$size": {"$gte": 1}}` compares. An empty array has size `0`.
+
+### 5.9 Quantifier scope
+
+A quantifier scopes every condition inside it to **one** element. That is the difference between these two filters, and it is the whole reason `$some` takes a nested condition rather than being spelled across sibling clauses:
 
 ```json
-{ "items": { "$elemMatch": { "qty": { "$gt": 2 }, "sku": { "$startsWith": "A" } } } }
+{ "items": { "$some": { "qty": { "$gt": 2 }, "sku": { "$startsWith": "A" } } } }
 ```
 
-is TRUE only when a **single** item satisfies both.
+is TRUE only when a **single** item has both `qty > 2` and an `A` SKU.
 
-A constraint on a wildcard path is existential: it is TRUE if it holds for at least one resolved value, FALSE if it holds for none and at least one value resolved, and UNKNOWN if the path resolved to nothing.
+```json
+{ "$and": [
+  { "items": { "$some": { "qty": { "$gt": 2 } } } },
+  { "items": { "$some": { "sku": { "$startsWith": "A" } } } }
+] }
+```
+
+is TRUE when *some* item has `qty > 2` and *some* item has an `A` SKU — **possibly different items**, because each `$some` chooses its own element.
+
+Both readings are expressible and the nesting says which is meant. Versions before v0.4.0 offered a second mechanism for the second reading — a `[*]` wildcard path segment — which expressed nothing the two-clause form does not, could not be declined by a server through its profiles, and left the quantifier's scope to be inferred from a path shape. It was removed; see [`decisions/0001`](./decisions/0001-array-quantifiers-and-unknown-handling.md).
 
 ### 5.10 Presence and type — `$exists`, `$isNull`, `$type`
 
-`$exists` and `$isNull` are specified by the table in §4.2.
+`$exists` and `$isNull` are specified by the table in §4.2. `$exists` is total: it is TRUE or FALSE for every record and every path, with no exceptions anywhere in this specification.
 
 `$type` tests the value's JSON type against one of `string`, `number`, `integer`, `boolean`, `object`, `array`, `null`. `integer` matches a number with no fractional part, so `3` and `3.0` are both integers and `3.5` is not; `number` matches any number including integers. `$type: "null"` is TRUE for a present `null` and UNKNOWN for an absent field — use `$exists` to test absence.
 
@@ -307,7 +399,9 @@ A constraint on a wildcard path is existential: it is TRUE if it holds for at le
 { "price": { "$gt": { "$field": "cost" } } }
 ```
 
-If the referenced path resolves to nothing, the comparison is UNKNOWN. A `$field` path is subject to the same queryability rules as any other path (§3.5) — a reference is a read, and MUST be authorized as one. A `$field` operand that resolves to a sequence of more than one value (a wildcard path) is UNKNOWN.
+If the referenced path resolves to nothing, the comparison is UNKNOWN. A `$field` path is subject to the same queryability rules as any other path (§3.5) — a reference is a read, and MUST be authorized as one.
+
+Inside `$some` or `$every`, a `$field` reference resolves against the **element**, consistently with every other path in that nested condition (§3.4). To compare an element against a member of the enclosing record, hoist the comparison out of the quantifier.
 
 `{"$literal": v}` forces `v` to be treated as data. It is needed only when an object operand would otherwise be read as a reference:
 
@@ -323,6 +417,8 @@ If the referenced path resolves to nothing, the comparison is UNKNOWN. A `$field
 
 `{"age": {"$not": {"$gt": 5}}}` negates the constraint on that one field. It follows §4.1: UNKNOWN in, UNKNOWN out. It is a convenience — the same thing can always be written with the top-level `$not`.
 
+A sibling `$unknownAs` applies *after* the negation; to resolve UNKNOWN before it, put the modifier inside. See §4.6.
+
 ## 6. Extensibility
 
 The `$` namespace is reserved for this specification. An implementation that adds an operator MUST prefix it distinctly (`$x_`, or a vendor tag such as `$acme_geoWithin`) and MUST document it, because a bare `$geoWithin` may be standardised later with different semantics.
@@ -337,7 +433,7 @@ A filter is user-supplied input that becomes a query plan. Every implementation 
 | --- | --- | --- |
 | Nesting depth | 10 | Recursive descent over an attacker-supplied tree. |
 | Total clauses | 100 | Query planners degrade non-linearly. |
-| Set length (`$in`, `$nin`, `$hasAny`, `$hasAll`, `$hasNone`) | 1000 | Each member is a comparison. |
+| Set length (`$in`, `$nin`, `$hasAll`) | 1000 | Each member is a comparison. |
 | Request body size | 64 KiB | The cheapest limit to enforce, and the one that subsumes the others. |
 | `$regex` execution | 100 ms per record, or a non-backtracking engine | Catastrophic backtracking (ReDoS). |
 
@@ -346,6 +442,8 @@ An implementation MUST reject a filter that exceeds a limit with `query-too-comp
 For `$regex`, a linear-time engine (RE2, Rust `regex`, Go `regexp`) is strongly RECOMMENDED over a backtracking one. Where that is not available, `$regex` SHOULD be left out of the advertised profiles entirely, and clients directed to `$like`, whose worst case is bounded.
 
 Fields backed by unindexed storage are their own denial-of-service surface. An implementation SHOULD restrict expensive operators to indexed fields through its capability document rather than accepting them and timing out.
+
+`$some` and `$every` are the expensive operators on most backends: each one is a traversal of an array, and a nested quantifier is a traversal per element. They count toward the nesting-depth and clause limits like any other clause, and — unlike the `[*]` path segment they replaced — a server that cannot afford them can decline the whole `collections` profile (§2.1) instead of having to accept them as part of the path grammar. An implementation SHOULD publish a lower `maxDepth` for filters containing quantifiers if its storage makes them disproportionately costly.
 
 ## 8. Errors
 
@@ -398,7 +496,7 @@ A server MUST report the first error it finds rather than partially evaluating, 
 
 ## 9. Versioning
 
-The schema's `$id` carries the version: `…/v0.3.0/query-language-schema.json`. Each release is published at its own URL and, once published, is immutable. Consumers pin by `$id`.
+The schema's `$id` carries the version: `…/v0.4.0/query-language-schema.json`. Each release is published at its own URL and, once published, is immutable. Consumers pin by `$id`.
 
 - **Patch** — documentation and description text only.
 - **Minor** — new optional operators or profiles. A filter valid under `v0.N` stays valid under `v0.N+1`.

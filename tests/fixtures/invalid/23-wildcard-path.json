@@ -1,0 +1,9 @@
+{
+  "description": "the [*] wildcard path was removed in v0.4.0 — quantify with $some instead",
+  "query": {
+    "items[*].qty": {
+      "$gt": 0
+    }
+  },
+  "expectKeyword": "not"
+}

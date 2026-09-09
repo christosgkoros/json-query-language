@@ -63,19 +63,25 @@ const ACCEPTED = [
   ["set membership over the domain", { species: { $in: ["cat", "dog"] } }],
   ["date ordering", { born: { $gte: "2020-01-01" } }],
   ["inclusive range on a number", { weightKg: { $between: [2, 8] } }],
-  ["array membership", { tags: { $hasAny: ["rescue", "senior"] } }],
+  ["array membership, quantified", { tags: { $some: { $in: ["rescue", "senior"] } } }],
+  ["operand-side quantifier", { tags: { $hasAll: ["rescue", "senior"] } }],
   ["array length", { tags: { $size: { $gte: 1 } } }],
-  ["element condition over an array of scalars", { tags: { $elemMatch: { $startsWith: "adopt-" } } }],
-  ["element condition over an array of objects", {
-    vaccinations: { $elemMatch: { vaccine: "rabies", administeredAt: { $gt: "2024-01-01T00:00:00Z" } } },
+  ["existential condition over an array of scalars", { tags: { $some: { $startsWith: "adopt-" } } }],
+  ["universal condition over an array of scalars", { tags: { $every: { $startsWith: "adopt-" } } }],
+  ["existential condition over an array of objects", {
+    vaccinations: { $some: { vaccine: "rabies", administeredAt: { $gt: "2024-01-01T00:00:00Z" } } },
+  }],
+  ["universal condition over an array of objects", {
+    vaccinations: { $every: { vaccine: "rabies" } },
   }],
   ["nested object path", { "shelter.city": { $ilike: "%amsterdam%" } }],
   ["null handling spelled out", { $or: [{ microchip: { $ne: "X" } }, { microchip: { $isNull: true } }] }],
+  ["null handling as a modifier", { microchip: { $ne: "X", $unknownAs: true } }],
   ["presence of an optional object", { shelter: { $exists: true } }],
   ["nested logic", {
     $and: [
       { status: "available" },
-      { $or: [{ species: { $in: ["cat", "dog"] } }, { tags: { $hasAny: ["rescue"] } }] },
+      { $or: [{ species: { $in: ["cat", "dog"] } }, { tags: { $some: { $in: ["rescue"] } } }] },
       { $not: { neutered: false } },
     ],
   }],
@@ -114,7 +120,8 @@ const REJECTED = [
   ["$exists on an always-present field", { status: { $exists: true } }, "additionalProperties"],
   ["$isNull on a non-nullable field", { name: { $isNull: true } }, "additionalProperties"],
   ["numeric bound outside the field's range", { weightKg: 500 }, "anyOf"],
-  ["unknown path inside $elemMatch", { vaccinations: { $elemMatch: { brand: "x" } } }, "additionalProperties"],
+  ["unknown path inside $some", { vaccinations: { $some: { brand: "x" } } }, "additionalProperties"],
+  ["$unknownAs on a field that can never be UNKNOWN", { name: { $eq: "Fido", $unknownAs: true } }, "additionalProperties"],
 ];
 
 for (const [name, filter, keyword] of REJECTED) {
@@ -140,7 +147,7 @@ test("the rejected filters are rejected by narrowing, not by the base grammar", 
 test("profiles trim the operator set", () => {
   const { schema } = generateFilterSchema(pet, { profiles: ["core"] });
   const json = JSON.stringify(schema);
-  for (const op of ["$like", "$ilike", "$contains", "$between", "$hasAny", "$size", "$elemMatch", "$regex"]) {
+  for (const op of ["$like", "$ilike", "$contains", "$between", "$hasAll", "$size", "$some", "$every", "$regex"]) {
     assert.ok(!json.includes(`"${op}"`), `${op} should not survive a core-only generation`);
   }
   for (const op of ["$eq", "$in", "$gte", "$and"]) {
@@ -253,4 +260,25 @@ test("--include keeps exactly the named paths, nested ones included", () => {
   const check = makeAjv().compile(schema);
   assert.ok(check({ status: "sold" }), errs(check));
   assert.equal(check({ name: "Fido" }), false);
+});
+
+test("$unknownAs is emitted only where UNKNOWN is reachable", () => {
+  // Same rule the generator already applies to $exists and $isNull: a property
+  // that is required all the way up and cannot hold null never resolves to
+  // nothing, so the modifier would be a constant.
+  const { schema } = generateFilterSchema(pet);
+  const constraintFor = (path) => {
+    const branches = schema.properties[path]?.anyOf ?? [schema.properties[path]];
+    const ref = branches.map((b) => b?.$ref).find((r) => r?.includes("/C_"));
+    assert.ok(ref, `no constraint object emitted for "${path}"`);
+    return schema.$defs[ref.replace("#/$defs/", "")];
+  };
+  assert.ok(
+    !("$unknownAs" in constraintFor("name").properties),
+    "name is required and non-nullable — $unknownAs would be a constant",
+  );
+  assert.ok(
+    "$unknownAs" in constraintFor("microchip").properties,
+    "microchip is nullable, so UNKNOWN is reachable and the modifier applies",
+  );
 });

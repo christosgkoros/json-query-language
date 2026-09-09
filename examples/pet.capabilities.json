@@ -1,5 +1,5 @@
 {
-  "queryLanguage": "https://christosgkoros.com/json/query-language/v0.3.0/query-language-schema.json",
+  "queryLanguage": "https://christosgkoros.com/json/query-language/v0.4.0/query-language-schema.json",
   "filterSchema": "https://api.example.com/schemas/pet.filter.json",
   "profiles": [
     "core",
@@ -45,7 +45,8 @@
         "$in",
         "$nin",
         "$exists",
-        "$not"
+        "$not",
+        "$unknownAs"
       ],
       "type": "string",
       "values": [
@@ -85,7 +86,8 @@
         "$between",
         "$nbetween",
         "$exists",
-        "$not"
+        "$not",
+        "$unknownAs"
       ],
       "type": "string",
       "format": "date",
@@ -104,7 +106,8 @@
         "$between",
         "$nbetween",
         "$exists",
-        "$not"
+        "$not",
+        "$unknownAs"
       ],
       "type": "number",
       "description": "Last recorded weight."
@@ -114,7 +117,8 @@
         "$eq",
         "$ne",
         "$exists",
-        "$not"
+        "$not",
+        "$unknownAs"
       ],
       "type": "boolean",
       "description": "Whether the pet has been neutered."
@@ -134,7 +138,8 @@
         "$contains",
         "$exists",
         "$isNull",
-        "$not"
+        "$not",
+        "$unknownAs"
       ],
       "type": "string",
       "description": "Chip number, null if unchipped.",
@@ -144,20 +149,21 @@
       "operators": [
         "$eq",
         "$ne",
-        "$hasAny",
+        "$some",
+        "$every",
         "$hasAll",
-        "$hasNone",
         "$size",
-        "$elemMatch",
         "$exists",
-        "$not"
+        "$not",
+        "$unknownAs"
       ],
       "type": "array",
       "description": "Free-form labels used for browsing."
     },
     "shelter": {
       "operators": [
-        "$exists"
+        "$exists",
+        "$unknownAs"
       ],
       "type": "object",
       "description": "Where the pet is housed."
@@ -176,7 +182,8 @@
         "$endsWith",
         "$contains",
         "$exists",
-        "$not"
+        "$not",
+        "$unknownAs"
       ],
       "type": "string",
       "description": "Shelter name."
@@ -195,7 +202,8 @@
         "$endsWith",
         "$contains",
         "$exists",
-        "$not"
+        "$not",
+        "$unknownAs"
       ],
       "type": "string",
       "description": "Shelter city."
@@ -213,7 +221,8 @@
         "$between",
         "$nbetween",
         "$exists",
-        "$not"
+        "$not",
+        "$unknownAs"
       ],
       "type": "integer",
       "description": "Total kennels."
@@ -222,10 +231,12 @@
       "operators": [
         "$eq",
         "$ne",
+        "$some",
+        "$every",
         "$size",
-        "$elemMatch",
         "$exists",
-        "$not"
+        "$not",
+        "$unknownAs"
       ],
       "type": "array",
       "description": "Vaccination history."

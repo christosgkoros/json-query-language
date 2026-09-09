@@ -1,0 +1,9 @@
+{
+  "description": "$hasAll takes a non-empty operand set",
+  "query": {
+    "tags": {
+      "$hasAll": []
+    }
+  },
+  "expectKeyword": "minItems"
+}

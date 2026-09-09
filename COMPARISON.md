@@ -171,9 +171,9 @@ Anyone building this should know what has already been tried.
 | [**OData**](https://www.odata.org/) | The dream, already attempted and standardised (OASIS, ISO/IEC 20802). `$filter`, `$select`, `$expand`, `$orderby`, `$top`/`$skip`, `$metadata`. Worth studying for why it did not displace GraphQL: a string-encoded `$filter` no schema can validate — precisely the defect this grammar fixes — an enormous surface, and CSDL metadata few enjoyed. |
 | [**JSON:API**](https://jsonapi.org/) | Sparse fieldsets and `include` are a working design for the `select` and `expand` layers. Its `filter` is deliberately unspecified. |
 | [**OGC CQL2**](https://docs.ogc.org/is/21-065r2/21-065r2.html) | Direct prior art for the predicate itself, including a JSON encoding. |
-| **MongoDB query language** | The obvious syntactic ancestor of `$eq`/`$in`/`$elemMatch`. The divergences here are deliberate: no implicit coercion, specified three-valued logic, and `$in` documented as whole-value comparison. |
+| **MongoDB query language** | The obvious syntactic ancestor of `$eq`/`$in`. The divergences here are deliberate: no implicit coercion, specified three-valued logic, `$in` as whole-value comparison with element access spelled `$some`, and `$elemMatch` renamed to `$some` beside a `$every` MongoDB has no equivalent for. |
 | [**SCIM filters**](https://www.rfc-editor.org/rfc/rfc7644#section-3.4.2.2), [**AIP-160**](https://google.aip.dev/160) | String-encoded filter grammars, with the same unvalidatable-parameter problem as OData. |
-| [**JSONPath (RFC 9535)**](https://www.rfc-editor.org/rfc/rfc9535) | A standardised path grammar. [SPEC.md §3.2](./SPEC.md#32-path-grammar) uses a deliberately smaller one; the divergence is worth revisiting before 1.0. |
+| [**JSONPath (RFC 9535)**](https://www.rfc-editor.org/rfc/rfc9535) | A standardised path grammar. [SPEC.md §3.2](./SPEC.md#32-path-grammar) uses a deliberately smaller one — smaller again since v0.4.0 dropped the `[*]` wildcard segment in favour of explicit quantifiers, which narrows the divergence to the non-wildcard subset. |
 | **JSON Hyper-Schema** | The cautionary tale for the `expand` layer. |
 | **Hasura / Prisma / Postgraphile `where`** | The de facto GraphQL filter dialects. Between them they are the closest thing to an existing standard, and none of them is one. |
 

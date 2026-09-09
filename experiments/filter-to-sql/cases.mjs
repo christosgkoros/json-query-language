@@ -91,8 +91,9 @@ export const CASES = [
     group: "A. What a search UI sends",
     id: "a09",
     title: "Tag chips, any of",
-    filter: { tags: { $hasAny: ["indoor", "small"] } },
+    filter: { tags: { $some: { $in: ["indoor", "small"] } } },
     expect: ["p01", "p05", "p06", "p10"],
+    note: "The v0.3.x $hasAny. Same rows: the quantifier is now written down instead of fused into the operator name.",
   },
   {
     group: "A. What a search UI sends",
@@ -151,7 +152,7 @@ export const CASES = [
     filter: {
       $and: [
         { status: "available" },
-        { $or: [{ "shelter.city": "Patras" }, { tags: { $hasAny: ["trained"] } }] },
+        { $or: [{ "shelter.city": "Patras" }, { tags: { $some: { $in: ["trained"] } } }] },
       ],
     },
     expect: ["p02"],
@@ -191,27 +192,29 @@ export const CASES = [
   {
     group: "B. Collections and nesting",
     id: "b01",
-    title: "One element satisfying two conditions ($elemMatch)",
-    filter: { vaccinations: { $elemMatch: { vaccine: "rabies", boosterDue: { $lt: "2025-01-01" } } } },
+    title: "One element satisfying two conditions (one $some)",
+    filter: { vaccinations: { $some: { vaccine: "rabies", boosterDue: { $lt: "2025-01-01" } } } },
     expect: ["p08", "p09"],
     note: "p04 has a rabies shot and an overdue booster, but on two different elements (§5.9).",
   },
   {
     group: "B. Collections and nesting",
     id: "b02",
-    title: "The same two conditions over a wildcard path",
+    title: "The same two conditions as two separate $some clauses",
     filter: {
-      "vaccinations[*].vaccine": "rabies",
-      "vaccinations[*].boosterDue": { $lt: "2025-01-01" },
+      $and: [
+        { vaccinations: { $some: { vaccine: "rabies" } } },
+        { vaccinations: { $some: { boosterDue: { $lt: "2025-01-01" } } } },
+      ],
     },
     expect: ["p04", "p08", "p09"],
-    note: "Existential per clause, so p04 now matches. The pair b01/b02 is the whole of §5.9 in two filters.",
+    note: "Each $some picks its own element, so p04 now matches. The pair b01/b02 is the whole of §5.9 in two filters — and it is why the [*] wildcard was redundant: this row set is exactly what the wildcard spelling produced in v0.3.x.",
   },
   {
     group: "B. Collections and nesting",
     id: "b03",
-    title: "A range inside $elemMatch",
-    filter: { vaccinations: { $elemMatch: { administeredAt: { $gte: "2025-01-01T00:00:00Z" } } } },
+    title: "A range inside $some",
+    filter: { vaccinations: { $some: { administeredAt: { $gte: "2025-01-01T00:00:00Z" } } } },
     expect: ["p05", "p07"],
   },
   {
@@ -225,26 +228,27 @@ export const CASES = [
   {
     group: "B. Collections and nesting",
     id: "b05",
-    title: "$in over a wildcard path",
-    filter: { "vaccinations[*].vaccine": { $in: ["parvo"] } },
+    title: "$in inside a quantifier",
+    filter: { vaccinations: { $some: { vaccine: { $in: ["parvo"] } } } },
     expect: ["p04", "p08"],
+    note: "$in still compares a whole value — the element's. The quantifier is what reaches the elements.",
   },
   {
     group: "B. Collections and nesting",
     id: "b06",
     title: "Contains none of",
-    filter: { tags: { $hasNone: ["indoor"] } },
+    filter: { tags: { $not: { $some: { $in: ["indoor"] } } } },
     expect: ["p02", "p03", "p04", "p07", "p08", "p09"],
-    note: "p03's empty array contains nothing, so it satisfies $hasNone.",
+    note: "The v0.3.x $hasNone. p03's empty array makes $some FALSE, so the negation is TRUE — no UNKNOWN is involved, which is why the negation is safe here.",
   },
 
   {
     group: "B. Collections and nesting",
     id: "b07",
-    title: "A constraint on the elements of an array, via [*]",
-    filter: { "tags[*]": { $ne: "indoor" } },
+    title: "A constraint on the elements of an array",
+    filter: { tags: { $some: { $ne: "indoor" } } },
     expect: ["p01", "p02", "p04", "p05", "p07", "p08", "p09", "p10"],
-    note: "Existential (§5.9): TRUE where some tag is not 'indoor'. p06's only tag is 'indoor', so FALSE; p03's empty array resolves to nothing, so UNKNOWN.",
+    note: "TRUE where some tag is not 'indoor'. p06's only tag is 'indoor', so FALSE; p03's empty array is FALSE too — in v0.3.x the [*] spelling made it UNKNOWN. Both are excluded here, so the change is invisible until the clause is negated: see b13.",
   },
   {
     group: "B. Collections and nesting",
@@ -256,17 +260,50 @@ export const CASES = [
   {
     group: "B. Collections and nesting",
     id: "b09",
-    title: "$exists: true over a wildcard path",
-    filter: { "vaccinations[*].boosterDue": { $exists: true } },
+    title: "$exists: true inside a quantifier",
+    filter: { vaccinations: { $some: { boosterDue: { $exists: true } } } },
     expect: ["p01", "p02", "p04", "p05", "p07", "p08", "p09"],
   },
   {
     group: "B. Collections and nesting",
     id: "b10",
-    title: "$exists: false over the same wildcard path",
-    filter: { "vaccinations[*].boosterDue": { $exists: false } },
+    title: "$exists: false inside the same quantifier",
+    filter: { vaccinations: { $some: { boosterDue: { $exists: false } } } },
     expect: ["p02", "p04", "p08"],
-    note: "The records with no vaccinations at all (p03, p06, p10) appear in neither b09 nor b10: §5.9 makes a wildcard constraint UNKNOWN when the path resolves to nothing, which costs $exists the totality §4.2 gives it everywhere else.",
+    note: "The records with no vaccinations at all (p03, p06, p10) are in neither b09 nor b10, but no longer for the reason v0.3.x gave: their arrays are empty, so no element satisfies either condition and both are FALSE. $exists keeps the totality §4.2 grants it — the contradiction between §4.2 and the old §5.9 is gone with the wildcard.",
+  },
+
+  {
+    group: "B. Collections and nesting",
+    id: "b11",
+    title: "$every over an array of objects",
+    filter: { vaccinations: { $every: { vaccine: "rabies" } } },
+    expect: ["p01", "p03", "p05", "p06", "p09", "p10"],
+    note: "p03, p06 and p10 have empty vaccination arrays and are TRUE vacuously (§5.8). That is the answer $every is specified to give, and it is the one people misread.",
+  },
+  {
+    group: "B. Collections and nesting",
+    id: "b12",
+    title: "$every over an array of scalars",
+    filter: { tags: { $every: { $ne: "indoor" } } },
+    expect: ["p02", "p03", "p04", "p07", "p08", "p09"],
+    note: "Same row set as b06's negated $some, but only because no tag is ever null: where an element is UNKNOWN the two diverge, since $every requires every element TRUE while the negation only requires none TRUE.",
+  },
+  {
+    group: "B. Collections and nesting",
+    id: "b13",
+    title: "Negating a quantifier — where the empty array shows up",
+    filter: { $not: { tags: { $some: { $ne: "indoor" } } } },
+    expect: ["p03", "p06"],
+    note: "p06's only tag is 'indoor', so $some is FALSE and the negation TRUE. p03's empty array is also FALSE, so it is TRUE too — under the v0.3.x [*] spelling it was UNKNOWN and this filter returned p06 alone. The one behavioural change of the v0.4.0 rewrite, made observable.",
+  },
+  {
+    group: "B. Collections and nesting",
+    id: "b14",
+    title: "$every over a field that is not an array",
+    filter: { name: { $every: { $ne: "x" } } },
+    expect: [],
+    note: "UNKNOWN, not vacuously TRUE (§5.8): there is no array to quantify over. Under the document binding this compiles; under the hybrid binding `name` is a JSON path too, so both agree.",
   },
 
   // -------------------------------------------------------------------------
@@ -362,6 +399,31 @@ export const CASES = [
   },
 
   // -------------------------------------------------------------------------
+  {
+    group: "C. Null, missing and negation",
+    id: "c12",
+    title: "$unknownAs recovers the rows three-valued logic drops",
+    filter: { microchip: { $ne: "CHIP-001", $unknownAs: true } },
+    expect: ["p02", "p03", "p04", "p05", "p06", "p07", "p08", "p09", "p10"],
+    note: "Compare c05 (the bare $ne, which drops p02, p03 and p06) and c07 (the §4.1 longhand, which recovers the two nulls but not the absent p03). $unknownAs resolves every UNKNOWN, so it recovers absence as well — it is more inclusive than the longhand it replaces, and that difference is worth knowing before substituting one for the other.",
+  },
+  {
+    group: "C. Null, missing and negation",
+    id: "c13",
+    title: "$unknownAs outside a field-level $not",
+    filter: { born: { $not: { $gte: "2020-01-01" }, $unknownAs: true } },
+    expect: ["p02", "p04", "p08", "p09", "p10"],
+    note: "coalesce(NOT x, TRUE). p10 has no born, so the negation is UNKNOWN and the modifier turns it TRUE.",
+  },
+  {
+    group: "C. Null, missing and negation",
+    id: "c14",
+    title: "$unknownAs inside the same $not",
+    filter: { born: { $not: { $gte: "2020-01-01", $unknownAs: true } } },
+    expect: ["p02", "p04", "p08", "p09"],
+    note: "NOT coalesce(x, TRUE). Same operands as c13, one row different: resolution distributes over AND but not over negation (§4.6), so the nesting decides. The pair is the whole rule in two filters.",
+  },
+
   {
     group: "D. Types and coercion",
     id: "d01",

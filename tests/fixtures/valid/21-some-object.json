@@ -1,8 +1,8 @@
 {
-  "description": "$elemMatch over an array of objects takes a Filter",
+  "description": "$some over an array of objects takes a Filter",
   "query": {
     "items": {
-      "$elemMatch": {
+      "$some": {
         "qty": {
           "$gt": 2
         },

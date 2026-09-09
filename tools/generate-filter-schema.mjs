@@ -66,7 +66,7 @@ const SURPRISING = new Set([
   "$and", "$or", "$nor", "$not",
   "$in", "$nin", "$exists", "$isNull", "$type",
   "$like", "$ilike", "$contains", "$regex", "$flags", "$search",
-  "$between", "$hasAny", "$hasAll", "$hasNone", "$size", "$elemMatch",
+  "$between", "$hasAll", "$size", "$some", "$every", "$unknownAs",
 ]);
 
 /** Value-domain keywords worth carrying onto an equality operand. */
@@ -199,8 +199,8 @@ function globToRegExp(glob) {
 /**
  * Walks one object schema and returns the queryable paths beneath it. Nested
  * objects contribute dotted paths within the *same* filter; arrays stop the
- * descent and are addressed through $elemMatch instead, which is the operator
- * with the semantics people usually mean (SPEC §5.9).
+ * descent and are addressed through the $some/$every quantifiers instead, which
+ * say which quantifier is meant instead of leaving it to a path shape (SPEC §5.8).
  */
 function collectFields(node, ctx, state) {
   const out = [];
@@ -274,6 +274,7 @@ function operatorsFor(field, ctx) {
   if (kind === "object") {
     push("$exists");
     if (info.nullable) push("$isNull");
+    pushUnknownAs(push, field, info);
     return ops;
   }
 
@@ -287,15 +288,17 @@ function operatorsFor(field, ctx) {
       if (!field.present) push("$exists");
       if (info.nullable) push("$isNull");
       push("$not");
+      pushUnknownAs(push, field, info);
       return ops;
     }
     push("$eq", "$ne");
-    if (field.itemInfo.kind === "scalar") push("$hasAny", "$hasAll", "$hasNone");
+    if (field.itemInfo?.kind === "object" || field.itemInfo?.kind === "scalar") push("$some", "$every");
+    if (field.itemInfo.kind === "scalar") push("$hasAll");
     push("$size");
-    if (field.itemInfo?.kind === "object" || field.itemInfo?.kind === "scalar") push("$elemMatch");
     if (!field.present) push("$exists");
     if (info.nullable) push("$isNull");
     push("$not");
+    pushUnknownAs(push, field, info);
     return ops;
   }
 
@@ -327,7 +330,19 @@ function operatorsFor(field, ctx) {
   if (!field.present) push("$exists");
   if (info.nullable) push("$isNull");
   push("$not");
+  pushUnknownAs(push, field, info);
   return ops;
+}
+
+/**
+ * $unknownAs only earns its place where UNKNOWN is reachable. A property that is
+ * required all the way up and cannot hold null never resolves to nothing, and
+ * the generated operand schemas make a type mismatch a validation error rather
+ * than an UNKNOWN — so on those fields the modifier would be a constant, exactly
+ * as $exists and $isNull are.
+ */
+function pushUnknownAs(push, field, info) {
+  if (!field.present || info.nullable) push("$unknownAs");
 }
 
 // ---------------------------------------------------------------------------
@@ -472,15 +487,17 @@ function emitConstraint(ctx, field, prefix) {
       case "$between": case "$nbetween":
         props[op] = annotate(ctx, op, { type: "array", minItems: 2, maxItems: 2, items: orderedRef() });
         break;
-      case "$hasAny": case "$hasAll": case "$hasNone":
+      case "$hasAll":
         props[op] = annotate(ctx, op, setOf(itemRef()));
         break;
       case "$size":
         props[op] = annotate(ctx, op, emitSizeDef(ctx));
         break;
-      case "$elemMatch": {
-        const target = emitElemMatch(ctx, field, prefix);
-        if (target) props[op] = annotate(ctx, op, target);
+      case "$some": case "$every": {
+        // Both quantifiers take the same element condition, so the subschema is
+        // emitted once and referenced twice.
+        field.elementTarget ??= emitQuantifierTarget(ctx, field, prefix);
+        if (field.elementTarget) props[op] = annotate(ctx, op, field.elementTarget);
         break;
       }
       case "$not":
@@ -520,10 +537,10 @@ function emitConstraint(ctx, field, prefix) {
   return { $ref: `#/$defs/${name}` };
 }
 
-function emitElemMatch(ctx, field, prefix) {
+function emitQuantifierTarget(ctx, field, prefix) {
   if (field.itemInfo?.kind === "object") {
     if (field.depth + 1 > ctx.opts.maxDepth) {
-      ctx.warn(`"${field.path}": --max-depth reached, $elemMatch omitted.`);
+      ctx.warn(`"${field.path}": --max-depth reached, $some and $every omitted.`);
       return null;
     }
     const name = defName(ctx, `${prefix}F_`, `${field.path}_elem`);
@@ -539,7 +556,7 @@ function emitElemMatch(ctx, field, prefix) {
     // An array of scalars has no member paths, so the element condition is a
     // constraint object over the element value itself (SPEC §5.8).
     const element = {
-      path: `${field.path}[*]`,
+      path: `${field.path} element`,
       nameHint: `${field.path}_elem`,
       schema: field.items ?? {},
       info: field.itemInfo,
@@ -547,8 +564,8 @@ function emitElemMatch(ctx, field, prefix) {
       kind: "scalar",
     };
     const ref = emitConstraint(ctx, element, prefix);
-    // $elemMatch takes the object form only; the scalar shorthand is not part
-    // of its operand grammar.
+    // The quantifiers take the object form only; the scalar shorthand is not
+    // part of their operand grammar.
     return element.constraintDef ? { $ref: `#/$defs/${element.constraintDef}` } : ref;
   }
   return null;
@@ -608,8 +625,8 @@ function emitFilter(ctx, node, name, state) {
 const SILENT_RULES = [
   "Sibling members are combined with implicit AND, at every level.",
   "A bare scalar is equality: {\"status\": \"open\"} is {\"status\": {\"$eq\": \"open\"}}.",
-  "Comparisons use three-valued logic: $ne and $not do NOT match records where the field is null or absent. To include them, add an explicit {\"$isNull\": true} branch under $or.",
-  "$in compares the whole field value; it is not array membership. The element operators are $hasAny, $hasAll and $hasNone.",
+  "Comparisons use three-valued logic: $ne and $not do NOT match records where the field is null or absent. To include those records, add \"$unknownAs\": true to the same constraint.",
+  "$in compares the whole field value; it is not array membership. To say something about the elements of an array, quantify: {\"tags\": {\"$some\": {\"$in\": [\"a\"]}}}.",
 ];
 
 export function generateFilterSchema(resource, options = {}) {

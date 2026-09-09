@@ -5,6 +5,102 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — with the pre-1.0 caveat that a
 minor release may break compatibility, in which case the break is spelled out below.
 
+## [0.4.0] — 2026-09-07
+
+**Breaking.** The `$id` is now `…/v0.4.0/query-language-schema.json`. This release resolves the
+three operator overlaps that an external review and this repository's own
+`experiments/filter-to-sql` flagged independently; the design and the evidence are in
+[`decisions/0001-array-quantifiers-and-unknown-handling.md`](./decisions/0001-array-quantifiers-and-unknown-handling.md).
+
+The headline is that the language had **two** unrelated mechanisms for looking inside an array —
+`$elemMatch` and the `[*]` path segment — and one mechanism now does both jobs while naming its
+quantifier. Operator count is unchanged at 34.
+
+### Added
+
+- **`$some` and `$every`** (profile `collections`), the element quantifiers. Each takes a `Filter`
+  when the elements are objects — paths inside resolve against the element — or a constraint
+  object when they are scalars. `$some` is `$elemMatch` renamed; `$every` is new, because
+  universal quantification over elements was **not previously expressible**: `$not` over `$some`
+  is "no element matches", which is a different predicate.
+- **`$unknownAs`** (profile `core`), a boolean modifier on a constraint object that resolves that
+  constraint's UNKNOWN. `{"status": {"$ne": "archived", "$unknownAs": true}}` is the one-clause
+  form of the `$or`/`$isNull` longhand this specification prescribed before. It applies last —
+  after every sibling operator, including a field-level `$not` — and [SPEC.md
+  §4.6](./SPEC.md#46-resolving-unknown--unknownas) gives the scope rules and the nine-case proof
+  that resolution distributes over three-valued AND. It requires at least one operator beside it.
+- **A truth-table column for `$nor`** in §4.1, and a note that all three connectives are
+  commutative so the six rows cover all nine combinations. `$nor`'s three-valued result previously
+  had to be derived, and the derivation was the trap.
+- **`$every` on generated schemas**, and `$unknownAs` on exactly the fields where UNKNOWN is
+  reachable — the same rule the generator already applied to `$exists` and `$isNull`. On a
+  property that is required all the way up and cannot hold null, the modifier would be a constant,
+  so it is omitted and the trap disappears from the tool definition entirely.
+
+### Removed — breaking
+
+- **`$elemMatch`.** Renamed to `$some`. Mechanical: `{"items": {"$elemMatch": {…}}}` →
+  `{"items": {"$some": {…}}}`.
+- **`$hasAny` and `$hasNone`.** Both were compositions of a quantifier and `$in`, and their
+  presence beside whole-value `$in` was the whole `$in`-versus-membership confusion.
+  `{"tags": {"$hasAny": ["a"]}}` → `{"tags": {"$some": {"$in": ["a"]}}}`;
+  `{"tags": {"$hasNone": ["a"]}}` → `{"tags": {"$not": {"$some": {"$in": ["a"]}}}}`.
+- **The `[*]` wildcard path segment**, from the §3.2 grammar. It expressed nothing the equivalent
+  `$some` clauses do not: per-constraint existential scope is exactly what an `$and` of *separate*
+  `$some` clauses means. `{"items[*].qty": {"$gt": 2}}` →
+  `{"items": {"$some": {"qty": {"$gt": 2}}}}`. Three further reasons it went: living in the path
+  grammar made it the only construct present in **every** profile including `core`, so no server
+  could decline it; it contradicted §4.2 by revoking `$exists`'s totality; and it cost 1.74× the
+  SQL of the equivalent `$elemMatch` plus a table-valued join per clause. The schema now rejects a
+  `[*]` path outright, including in `$field` position, so a stale filter is a validation error
+  rather than a path read as a literal key name.
+- **`$defs/ScalarSet`.** `$in` and `$nin` now take `$defs/OperandSet`, the same set definition the
+  collection operators use. The two definitions had silently diverged — `$hasAny` accepted `$field`
+  references and object members while `$in` accepted only scalars — with nothing in the
+  specification acknowledging it. The unification is toward the permissive side, so no filter that
+  was valid becomes invalid.
+
+### Changed — breaking
+
+- **A type-mismatched equality is FALSE, not UNKNOWN.** §4.3 said comparing different JSON types
+  yields UNKNOWN; §5.1 defined `$eq` as structural equality, under which a string and a number are
+  simply unequal. The two readings are indistinguishable under `$eq` and differ under `$ne`, and
+  the specification asserted both. It is now settled as **FALSE for the equality family**
+  (`$eq`, `$ne`, `$in`, `$nin`, `$hasAll`) and UNKNOWN for ordering, string and array operators,
+  with a table in §4.3. **This changes result sets without changing any filter's shape**, so a
+  mechanical rewrite will not surface it: `{"notes": {"$ne": 3}}` now matches a record whose
+  `notes` is `"hello"`.
+- **An empty array under a former wildcard clause.** `[*]` on `[]` was UNKNOWN, because the path
+  resolved to nothing; `$some` on `[]` is FALSE, because an empty array is a resolved value and
+  nothing in it satisfies the condition. `$every` on `[]` is TRUE, vacuously. Observable under
+  negation only, and it is the one migration step a codemod cannot claim to preserve.
+- **§3.4 resolution is single-valued.** With no wildcard segment, a path yields zero values or
+  exactly one. The sequence model is gone.
+- **Six operator descriptions that contradicted §4.1.** These strings are vendored verbatim into
+  generated schemas and MCP tool definitions, so they were a first-order cause of the confusion
+  rather than a cosmetic issue. `$nor`'s was outright wrong — "None of the listed filters may
+  evaluate TRUE" is the two-valued reading — and `$ne`'s said only "Field does not equal the
+  operand". `$nin`, `$nbetween`, `$nlike` and `$nilike` all read as total predicates. Every
+  negative operator now states what it does with UNKNOWN.
+- **§1 no longer calls the filter "a boolean function"** while §4.1 makes it three-valued.
+- **`$exists` is documented as unconditionally total.** It always was, except under a wildcard
+  path; with those gone the exception is gone.
+- **§3.5 settles whether an index suffix is a separate path.** It is not: `items[0]` is the field
+  `items` for queryability, while a named member beneath it (`items[0].sku`) is its own path.
+- **§7 addresses quantifier cost.** `$some` and `$every` are the expensive operators on most
+  backends, and a server that cannot afford them can decline the `collections` profile — which is
+  precisely what the `[*]` segment made impossible.
+
+### Fixed
+
+- **`$some`/`$every`'s operand shape is no longer ambiguous.** `anyOf: [Filter, ConstraintObject]`
+  overlaps on a leading `$not`, and nothing said which was meant. §5.8 now gives a decidable rule:
+  scan for the first member that can only be one of the two, recursing through `$not`/`$and`/`$or`/
+  `$nor` bodies when the outer member is itself ambiguous.
+- **`$field` inside a quantifier resolves against the element**, stated in §5.8 and §5.11. §5.11
+  said "the same record" while §5.8 said paths were element-relative; both readings were
+  defensible.
+
 ## [0.3.1] — 2026-09-04
 
 No change to the schema, the grammar or the semantics. `query-language-schema.json` is
@@ -183,6 +279,7 @@ Initial research draft: `$and`, `$or`, `$not` over eight leaf condition types
 (`$eq`, `$ne`, `$in`, `$nin`, `$like`, `$nlike`, `$gt`/`$gte`/`$lt`/`$lte`/`$between`, `$isnull`),
 laid out as an OpenAPI `components.schemas` fragment.
 
+[0.4.0]: https://github.com/christosgkoros/json-query-language/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/christosgkoros/json-query-language/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/christosgkoros/json-query-language/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/christosgkoros/json-query-language/compare/v0.1.0...v0.2.0

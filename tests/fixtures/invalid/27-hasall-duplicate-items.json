@@ -1,0 +1,12 @@
+{
+  "description": "$hasAll takes a set — duplicate members are rejected",
+  "query": {
+    "tags": {
+      "$hasAll": [
+        "a",
+        "a"
+      ]
+    }
+  },
+  "expectKeyword": "uniqueItems"
+}
