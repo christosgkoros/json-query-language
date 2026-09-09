@@ -43,7 +43,10 @@
     "example:mcp": "node examples/mcp-server/server.mjs",
     "example:mcp:demo": "node examples/mcp-server/demo.mjs",
     "test:experiment": "node --test experiments/filter-to-sql/compile.test.mjs",
-    "experiment": "node experiments/filter-to-sql/run.mjs"
+    "experiment": "node experiments/filter-to-sql/run.mjs",
+    "test:intent": "node --test experiments/intent-to-filter/gold.test.mjs",
+    "intent": "node experiments/intent-to-filter/report.mjs",
+    "intent:run": "node experiments/intent-to-filter/runner.mjs"
   },
   "devDependencies": {
     "ajv": "^8.17.1",

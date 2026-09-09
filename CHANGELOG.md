@@ -25,6 +25,41 @@ No change to the grammar or to the semantics of evaluation. The only edit to
   under `properties.filter`, a bundled schema's self-references resolve against its own `$id`, so
   removing the `$id` breaks it — ajv fails to compile it at all.
 
+- **`experiments/intent-to-filter/`** — a second exercise, pre-registered and not yet run. It
+  asks whether a model actually writes better queries against a JSON-Schema-described predicate
+  language than against a documented search string, a prose-documented bespoke JSON query
+  language, or fixed scalar parameters — the comparison README §Why asserts and the repository
+  has never measured. Sixty questions are inherited from `experiments/filter-to-sql/cases.mjs`,
+  whose answer key was hand-derived from SPEC.md months earlier and so cannot have been chosen to
+  flatter the language; three more are authored to tempt the three catalogued mistakes. Five arms
+  share one evaluator, so no arm can win on its own semantics. Seven predictions and their
+  refutation conditions are committed before the run; two of the seven predict against the
+  repository's interest.
+- **The generated schema is not the narrowing the README says it is.** `examples/pet.filter.json`
+  accepts `{"microchip": {"$unknownAs": false}}`; the published grammar rejects it, via
+  `$defs/ConstraintObject.dependentSchemas.$unknownAs` (`minProperties: 2`), and
+  `tests/fixtures/invalid/24-unknownas-alone.json` pins that. The generator drops the rule.
+  `../filter-to-sql` then compiles the filter to `coalesce((), FALSE)`, which SQLite rejects — so a
+  server built as the README recommends answers 500 to a filter its own schema called valid.
+  README claims "Every filter the generated schema accepts is also valid against the published
+  grammar… `tests/generator.test.mjs` asserts this"; that test enumerates fifteen hand-written
+  filters, and a model found a sixteenth on its first pass. Recorded, not yet fixed: the repair
+  belongs in its own change and should replace the enumeration with a property check.
+- **Two of three providers cannot carry the recommended tool definition.** Gemini rejects it with
+  a 400 — its function-declaration schema has no `$ref`, and the grammar is recursive, so it
+  cannot be flattened either. OpenAI accepts it and silently discards `$defs`: measured, the
+  inlined schema bills 704 input tokens against 14,089 for the same schema dereferenced first, so
+  94% of the file — every operator description and every value domain — never reaches the model.
+  README §"Exposing search to an agent" says to inline the schema and mentions neither.
+- Three further findings, all about the *recommended* setup:
+  a generated schema cannot express a `$field` cross-field comparison at all — the generator
+  narrows an operand to the field's own type, leaving the `refs` profile unreachable — emits no
+  indexed paths, and withholds pattern matching from enumerated domains. The published grammar
+  expresses all four cases the generated one cannot, so the recommended setup is *less* expressive
+  than the cheap one. None of this is currently documented.
+- The experiment adds **no dependency**. It calls three providers over `fetch` because it has to
+  reach OpenAI, Google and Groq, and a single-vendor SDK would not have covered them.
+
 ### Changed
 
 - **Repositioned around the agent case.** README now leads with the language as a search

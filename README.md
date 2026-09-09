@@ -427,6 +427,7 @@ tests/generator.test.mjs       the generator: narrowing, soundness, recursion
 tests/fixtures/valid/          one per operator; also the docs' example set
 tests/fixtures/invalid/        every defect this version fixes, pinned
 experiments/filter-to-sql/     an exercise: compile a filter to SQL, then judge the design by it
+experiments/intent-to-filter/  an exercise: put the same question to five interfaces, count what a model gets right
 .github/workflows/ci.yml       tests on Node 20/22/24 + OpenAPI lint
 .github/workflows/release.yml  verifies a GitHub Release; publishes nothing
 ```
