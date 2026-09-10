@@ -8,6 +8,7 @@ import _Ajv2020 from "ajv/dist/2020.js";
 import _addFormats from "ajv-formats";
 
 import { generateFilterSchema } from "../tools/generate-filter-schema.mjs";
+import { sampler, operatorsIn, operatorsUsed } from "./fuzz.mjs";
 
 const Ajv2020 = _Ajv2020.default ?? _Ajv2020;
 const addFormats = _addFormats.default ?? _addFormats;
@@ -90,15 +91,128 @@ const ACCEPTED = [
 for (const [name, filter] of ACCEPTED) {
   test(`accepts: ${name}`, () => {
     assert.ok(validate(filter), errs(validate));
+    // Narrowing, on the cases README shows: each of these is legal JQL too.
+    assert.ok(validateGrammar(filter), errs(validateGrammar));
   });
 }
+
+const SEED = 20260909;
+const SAMPLES = 5000;
 
 test("everything the generated schema accepts, the published grammar also accepts", () => {
   // The soundness property that makes generation safe: narrowing only. A filter
   // written against a generated schema is always a legal JQL filter, so a
   // server implementing the published semantics can evaluate it unchanged.
-  for (const [name, filter] of ACCEPTED) {
-    assert.ok(validateGrammar(filter), `${name}: ${errs(validateGrammar)}`);
+  //
+  // The property is quantified over every filter, so it is checked by sampling
+  // the generated schema's own vocabulary rather than by listing cases: a list
+  // can only re-check the leaks someone already thought of. The leak in #8 —
+  // a dependency keyword the generator dropped, so a lone $unknownAs passed —
+  // sat under a list of fifteen filters that could never have found it.
+  const targets = [
+    ["pet", generated],
+    ["pet, core profile only", generateFilterSchema(pet, { profiles: ["core"] }).schema],
+    ["a recursive resource", generateFilterSchema(RECURSIVE_RESOURCE, { maxDepth: 2 }).schema],
+  ];
+
+  for (const [label, schema] of targets) {
+    const accepts = makeAjv().compile(schema);
+    const next = sampler(schema, SEED);
+    const covered = new Set();
+    let accepted = 0;
+
+    for (let i = 0; i < SAMPLES; i++) {
+      const filter = next();
+      if (!accepts(filter)) continue;
+      accepted++;
+      operatorsUsed(filter, covered);
+      assert.ok(
+        validateGrammar(filter),
+        `${label}: accepted by the generated schema, rejected by the grammar:\n` +
+          `${JSON.stringify(filter)}\n${errs(validateGrammar)}`,
+      );
+    }
+
+    // A sampler that lands outside the schema every time would pass the loop
+    // above without testing anything, and so would one that never reaches an
+    // operator. Both are asserted rather than assumed.
+    assert.ok(accepted > SAMPLES / 10, `${label}: only ${accepted}/${SAMPLES} samples were accepted`);
+    const unreached = [...operatorsIn(schema)].filter((op) => !covered.has(op)).sort();
+    assert.deepEqual(unreached, [], `${label}: no accepted sample exercised ${unreached.join(", ")}`);
+  }
+});
+
+test("a modifier cannot stand alone in a generated constraint object", () => {
+  // The regression from #8, at both levels it can occur: $unknownAs has nothing
+  // to modify, so the published grammar rejects it and a generated schema that
+  // accepted it would be wider than the grammar. `$flags` is the same shape of
+  // rule, on the operator that already had it.
+  for (const filter of [
+    { microchip: { $unknownAs: false } },
+    { microchip: { $unknownAs: true } },
+    { microchip: { $not: { $unknownAs: true } } },
+    { shelter: { $unknownAs: true } },
+    { vaccinations: { $some: { boosterDue: { $unknownAs: true } } } },
+  ]) {
+    assert.equal(validate(filter), false, `expected rejection: ${JSON.stringify(filter)}`);
+    assert.equal(validateGrammar(filter), false, `expected the grammar to reject it too: ${JSON.stringify(filter)}`);
+  }
+  // With something to modify, it is accepted again.
+  assert.ok(validate({ microchip: { $ne: "X", $unknownAs: true } }), errs(validate));
+});
+
+test("no instance-constraining keyword of the published constraint object is dropped", () => {
+  // #8 was one keyword of $defs/ConstraintObject missing from every generated
+  // constraint object. This says what the generator does with each of them, so
+  // a keyword added to the published definition fails here — rather than in a
+  // filter someone's agent emits — until it is handled deliberately.
+  const source = grammar.$defs.ConstraintObject;
+  const carriesTriggers = (constraint, keyword) => {
+    for (const [trigger, rule] of Object.entries(source[keyword])) {
+      if (!(trigger in constraint.properties)) continue;
+      // Everything that constrains an instance has to survive; $comment is the
+      // one part that may be dropped, being prose a validator never reads.
+      const expected = Array.isArray(rule)
+        ? rule
+        : Object.fromEntries(Object.entries(rule).filter(([k]) => k !== "$comment"));
+      assert.deepEqual(constraint[keyword]?.[trigger], expected, `${constraint.title}: ${keyword}.${trigger}`);
+    }
+    return true;
+  };
+  const handled = {
+    type: (c) => c.type === "object",
+    minProperties: (c) => c.minProperties >= source.minProperties,
+    additionalProperties: (c) => c.additionalProperties === false,
+    dependentSchemas: (c) => carriesTriggers(c, "dependentSchemas"),
+    dependentRequired: (c) => carriesTriggers(c, "dependentRequired"),
+  };
+
+  const ANNOTATIONS = new Set(["title", "description", "examples", "$comment", "properties"]);
+  assert.deepEqual(
+    Object.keys(source).filter((k) => !ANNOTATIONS.has(k)).sort(),
+    Object.keys(handled).sort(),
+    "an instance-constraining keyword of $defs/ConstraintObject has no rule here",
+  );
+
+  // A generated constraint object is one whose properties are all operators;
+  // a generated Filter carries field paths beside them.
+  const withFlags = generateFilterSchema(pet, {
+    profiles: ["core", "strings", "ranges", "collections", "regex"],
+  }).schema;
+  const constraints = [generated, withFlags].flatMap((schema) =>
+    Object.values(schema.$defs).filter((def) => {
+      const names = Object.keys(def?.properties ?? {});
+      return names.length > 0 && names.every((n) => n.startsWith("$")) && !("$and" in def.properties);
+    }),
+  );
+  assert.ok(constraints.length > 10, `expected the pet schema to yield constraint objects, got ${constraints.length}`);
+  assert.ok(constraints.some((c) => "$flags" in c.properties), "no constraint object offering $flags was checked");
+  assert.ok(constraints.some((c) => "$unknownAs" in c.properties), "no constraint object offering $unknownAs was checked");
+
+  for (const constraint of constraints) {
+    for (const [keyword, holds] of Object.entries(handled)) {
+      assert.ok(holds(constraint), `${constraint.title}: ${keyword} is not carried or narrowed`);
+    }
   }
 });
 
@@ -180,20 +294,21 @@ test("exclude and max-depth bound the surface", () => {
   assert.ok(shallow.warnings.some((w) => w.includes("max-depth")));
 });
 
+const RECURSIVE_RESOURCE = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  $id: "https://example.com/node.json",
+  title: "Node",
+  type: "object",
+  required: ["id"],
+  properties: {
+    id: { type: "string" },
+    parent: { $ref: "#" },
+    children: { type: "array", items: { $ref: "#" } },
+  },
+};
+
 test("a recursive resource schema terminates", () => {
-  const recursive = {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    $id: "https://example.com/node.json",
-    title: "Node",
-    type: "object",
-    required: ["id"],
-    properties: {
-      id: { type: "string" },
-      parent: { $ref: "#" },
-      children: { type: "array", items: { $ref: "#" } },
-    },
-  };
-  const { schema } = generateFilterSchema(recursive, { maxDepth: 2 });
+  const { schema } = generateFilterSchema(RECURSIVE_RESOURCE, { maxDepth: 2 });
   assert.ok(makeAjv().validateSchema(schema));
   assert.ok("parent.id" in schema.properties, Object.keys(schema.properties).join(", "));
 });

@@ -32,13 +32,13 @@ the numbers and findings here are measured against v0.4.0.
 | --- | --- |
 | `compile.mjs` | the compiler: filter + binding → `{ sql, params, warnings }`, dialects `sqlite` and `postgres` |
 | `dataset.mjs` | 10 fixture records, and the two bindings the corpus is compiled under |
-| `cases.mjs` | 72 use cases, each with the row set SPEC.md says it should return |
+| `cases.mjs` | 73 use cases, each with the row set SPEC.md says it should return |
 | `harness.mjs` | an in-memory SQLite database, plus the ajv validation a server does first |
-| `compile.test.mjs` | the corpus, executed: 150 assertions |
+| `compile.test.mjs` | the corpus, executed: 152 assertions |
 | `run.mjs` | command line — compile a filter, print the SQL, run the corpus, print the measurements |
 
 ```bash
-npm run test:experiment                # the corpus, executed: 150 assertions
+npm run test:experiment                # the corpus, executed: 152 assertions
 npm run experiment -- --corpus         # every case, both bindings, side by side
 npm run experiment -- --metrics        # the numbers quoted below
 npm run experiment -- --sql b02        # one case, both bindings, both dialects
@@ -116,8 +116,8 @@ Treat every Postgres claim below as reasoned, not tested.
 ## Results
 
 ```
-130/130 case-binding pairs match the hand-derived expectation.
-150 assertions pass (65 cases × 2 bindings + 6 structural tests).
+146/146 case-binding pairs match the hand-derived expectation.
+152 assertions pass (73 cases × 2 bindings + 6 structural tests).
 ```
 
 | | |
@@ -125,20 +125,20 @@ Treat every Postgres claim below as reasoned, not tested.
 | Operator names in `x-profiles` | 34 |
 | Compiled | 33 — every one except `$search` |
 | Faithful on both dialects | 31 — `$regex`/`$flags` are faithful on SQLite only |
-| Cases that compile | 63 of 72 |
-| Cases rejected at compile time, with the right §8 problem type | 8, plus `c09` in the column binding only |
+| Cases that compile | 63 of 73 |
+| Cases rejected at compile time, with the right §8 problem type | 9, plus `c09` in the column binding only |
 | Cases whose answer is legitimately binding-dependent | 1 (`c10`) |
 
 ## Where the cost went
 
-`compile.mjs` is 1003 lines, 743 of them code, against v0.4.0 of the grammar.
+`compile.mjs` is 1015 lines, 749 of them code, against v0.4.0 of the grammar.
 By section:
 
 | Section | Code lines | What it does |
 | --- | --- | --- |
 | Operators | 215 | one function per operator family |
 | Dialects | 104 | the SQLite and Postgres primitives |
-| Constraints and filters | 91 | the dispatch: 33 `case` labels, the AND/OR/NOT plumbing and `$unknownAs` |
+| Constraints and filters | 97 | the dispatch: 33 `case` labels, the AND/OR/NOT plumbing and `$unknownAs` |
 | Compilation context | 64 | parameter interning, §7 limits, §2.1 profile gating |
 | Field paths | 60 | the §3.2 path grammar |
 | Field resolution | 54 | path → binding → accessor |

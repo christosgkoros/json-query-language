@@ -585,6 +585,14 @@ export const CASES = [
   },
   {
     group: "F. What has to be rejected",
+    id: "f05b",
+    title: "A modifier with nothing to modify",
+    filter: { microchip: { $unknownAs: false } },
+    expect: { problem: "malformed-query" },
+    note: "$unknownAs resolves UNKNOWN for its siblings, so alone it has no predicate to wrap. Rejected by the schema (ConstraintObject.dependentSchemas) — and by the compiler too, because emitting coalesce((), FALSE) turns a 400 into a database syntax error.",
+  },
+  {
+    group: "F. What has to be rejected",
     id: "f06",
     title: "Nesting past the depth limit",
     filter: tooDeep(12),

@@ -48,6 +48,37 @@ No change to the grammar or to the semantics of evaluation. The only edit to
   and the `type` URIs, the `pointer` member and the recovery members (`queryableFields`,
   `accepted`) are unchanged as its encoding. This relaxes a requirement, so nothing that
   conformed before stops conforming.
+
+### Fixed
+
+- **Generated filter schemas were not a narrowing** ([#8](https://github.com/christosgkoros/json-query-language/issues/8)).
+  `tools/generate-filter-schema.mjs` carried the published constraint object's
+  `dependentRequired` rule but not its `dependentSchemas` one, so `{"microchip": {"$unknownAs":
+  false}}` — a modifier with nothing to modify — passed a generated schema while
+  `query-language-schema.json` rejected it. A server following the documented path (generated
+  schema as the tool's `inputSchema`, published semantics behind it) then had to evaluate a filter
+  with no predicate in it; the SQL compiler in `experiments/filter-to-sql` emitted
+  `coalesce((), FALSE)` and the database answered with a syntax error. The generator now reads
+  both dependency keywords off `$defs/ConstraintObject` instead of restating either, so a rule
+  added there reaches generated schemas with the version that introduces it, and
+  `examples/pet.filter.json` is regenerated: 12 of its 18 constraint objects gain the rule — the
+  ones offering `$unknownAs`, which is every field that can be absent or null. The `$comment`
+  justifying the rule is deliberately not copied along with it: a validator never reads it, and
+  one copy per field is charged by the token to whoever inlines the schema in a tool definition.
+  No change to the grammar — this is the generator agreeing with it.
+- **The narrowing property is now tested as a property.** `tests/generator.test.mjs` asserted it
+  over a hand-written list of fifteen filters, which can only re-check the leaks someone already
+  thought of — the keyword above was dropped for as long as the list existed. It now samples
+  filters out of each generated schema's own vocabulary (`tests/fuzz.mjs`, seeded, deterministic)
+  and asserts that every one the generated schema accepts is valid JQL, over three generated
+  schemas; the run is checked for not being vacuous, in that it must accept a fraction of its
+  samples and must reach every operator the schema offers. A second test pins what the generator
+  does with each instance-constraining keyword of `$defs/ConstraintObject`, so adding one there
+  fails the suite until it is handled.
+- **`experiments/filter-to-sql` rejects a constraint object with no predicate in it** rather than
+  emitting an empty expression — `malformed-query`, at the pointer of the offending clause. Both
+  schemas already reject these, so this only matters for a compiler reached another way, but the
+  failure it replaces was a `500` from the database.
 - The prose in [README §Errors](./README.md#errors), [COMPARISON.md §4](./COMPARISON.md), the
   OpenAPI examples and `experiments/filter-to-sql` follows: they now describe Problem Details as
   the recommended shape rather than the required one, and name the failing *condition* where they

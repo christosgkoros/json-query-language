@@ -921,6 +921,18 @@ function constraintObjectToSql(ctx, scope, acc, constraint, pointer, level) {
         throw new QueryProblem("malformed-query", `"${op}" is not an operator of this language`, ptr);
     }
   }
+  if (terms.length === 0) {
+    // Nothing here is a predicate: $unknownAs is a modifier and $flags is an
+    // argument to $regex, so there is no expression to emit. The grammar
+    // rejects both cases (ConstraintObject.dependentSchemas and
+    // .dependentRequired), and so does a generated schema — but a compiler
+    // reached anyway must say malformed-query rather than emit "()" and let
+    // the database answer with a syntax error.
+    const detail = keys.length === 0
+      ? "a constraint object needs at least one operator"
+      : `"${keys.join('", "')}" needs an operator to modify`;
+    throw new QueryProblem("malformed-query", detail, pointer);
+  }
   const conjunction = terms.length === 1 ? terms[0] : `(${terms.join(" AND ")})`;
 
   // SPEC §4.6: $unknownAs applies last, to the conjunction of its siblings and
